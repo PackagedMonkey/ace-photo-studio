@@ -9,6 +9,11 @@ ACE Photo Studio is a macOS Electron desktop app for DJI DNG bracket workflows:
 5. Apply cleanup adjustments/presets.
 6. Export final JPEGs.
 
+Current focus areas:
+- merge correctness and workflow safety
+- practical editor workflow quality
+- ongoing Lightroom-like pro-app polish direction in the UI
+
 This README is implementation-aligned with the current codebase (not aspirational behavior).
 
 ## Current Feature Set
@@ -20,21 +25,48 @@ This README is implementation-aligned with the current codebase (not aspirationa
   - queue progress/error reporting
   - cancel (safe stop after current write)
   - retry failed sets only
+- Merged HDR master validation:
+  - merged outputs validated as 16-bit TIFF
 - Editor controls:
+  - library + preview + adjustments workflow
   - split/slider compare
-  - auto fix + preset actions
+  - top-row adaptive presets (`Natural`, `Real Estate`, `Punchy`, `Soft`)
+  - `PICK PRESET` dropdown with user preset save/load/delete
+  - auto fix workflow
   - histogram panel
   - per-photo adjustments
 - Export:
   - current photo as JPEG
   - export all loaded photos
   - strict-named merged-HDR JPEG export
+- Validation coverage:
+  - merge isolation test
+  - bracket grouping test
+  - sample HDR workflow validation
+  - editor regression test suite (`tests/validate-editor-regressions.js`)
+
+## Lens Correction Status (Current)
+
+- For `hdr-merge-source` DJI Mavic 3 DNGs, pre-merge manual/profile lens correction is default ON when the camera is detected.
+- Safe disable override is available:
+  - `ACE_DISABLE_DJI_M3_LENS_CORRECTION_PREMERGE=1`
+- Embedded-opcode correction is probed, but current helper stack typically falls back to manual/profile correction.
+- Current active production path is the DJI Mavic 3 manual/profile pre-merge fallback.
 
 ## Architecture At A Glance
 
-- `renderer.js`: UI, selection state, preview rendering, controls, export preparation
+- Renderer/editor responsibilities are partially split:
+  - `renderer.js`: UI orchestration/wiring and editor flow integration
+  - `preview-pipeline.js`: preview processing path helpers
+  - `histogram.js`: histogram rendering helpers
+  - `auto-fix.js`: Auto Fix estimation helpers
+  - `renderer-state.js`: renderer state creation/aliasing helpers
+  - `editor-regression-core.js`: shared editor logic used by regression checks
 - `preload.js`: secure bridge exposing explicit `aceApi` IPC methods/events
-- `main.js`: filesystem dialogs, RAW normalization, HDR queue orchestration, export writing, app menu
+- Main process responsibilities are beginning to split:
+  - `main.js`: app bootstrap, queue orchestration, normalization, menu/wiring
+  - `presets-ipc.js`: cleanup preset IPC handlers
+  - `exports-ipc.js`: export-related IPC handlers
 - `raw-service.js`: RAW -> TIFF conversion and preview JPEG generation
 - `hdr-service.js`: per-set merge orchestration and worker launch
 - `merge-worker.js`: alignment/fusion/HDR helper execution, set-isolation checks, final TIFF validation
@@ -70,6 +102,7 @@ npm start
 Validation scripts:
 
 ```bash
+npm run test:editor-regressions
 npm run test:bracket-grouping
 npm run test:merge-isolation
 npm run test:hdr-samples
@@ -91,9 +124,11 @@ npm run dist
 - [docs/PRESETS_AND_AUTOFIX.md](docs/PRESETS_AND_AUTOFIX.md)
 - [docs/OUTPUT_NAMING_AND_FILE_RULES.md](docs/OUTPUT_NAMING_AND_FILE_RULES.md)
 - [docs/RELEASE_GATE_CHECKLIST.md](docs/RELEASE_GATE_CHECKLIST.md)
+- [docs/QA_BASELINE_2026-03-13.md](docs/QA_BASELINE_2026-03-13.md)
 
-## Current Hardening Notes
+## Current Limitations / Known Status
 
-- Preview pipeline contains an explicit lens-correction debug bypass marker in renderer code. It is documented in the architecture and release checklist docs.
-- BrowserWindow runs with `contextIsolation: true`, `nodeIntegration: false`, `sandbox: false`; hardening path is documented in the IPC contract and architecture docs.
-- Renderer state is intentionally centralized but large; coupling risks and safe future refactor boundaries are documented in architecture.
+- Some interactive release-gate behaviors still rely on manual human verification (compare interaction, visual parity checks, full UI sweep).
+- Embedded DNG opcode correction is not the reliable active path in the current helper stack.
+- DJI Mavic 3 manual/profile pre-merge correction is the active correction path.
+- Preview quality/performance tuning is ongoing and should continue to be validated with `hdr-set-2` and `hdr-set-5`.
