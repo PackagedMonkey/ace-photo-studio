@@ -44,9 +44,11 @@
 
         <div class="topbar">
           <div class="actions actions-main">
-            <button class="primary" id="addPhotosBtn">Add Photos</button>
-            <button id="addFolderBtn">Add Folder</button>
-            <button id="addHdrFolderBtn">Add HDR Folder</button>
+            <div class="topbar-action-group topbar-action-group-import" role="group" aria-label="Import actions">
+              <button class="primary" id="addPhotosBtn">Add Photos</button>
+              <button id="addFolderBtn">Add Folder</button>
+              <button id="addHdrFolderBtn">Add HDR Folder</button>
+            </div>
           </div>
 
           <div class="brand-wrap">
@@ -57,14 +59,16 @@
           </div>
 
           <div class="actions actions-export">
-            <button id="saveCurrentBtn">Export Current JPG</button>
-            <button id="exportAllBtn">Export All JPG</button>
-            <button id="exportMergedHdrBtn">Batch HDR Export</button>
-            <label class="quality-inline" for="hdrExportQuality">
-              <span>Quality</span>
-              <input type="range" id="hdrExportQuality" min="60" max="100" value="92" />
-              <span id="hdrExportQualityValue">92</span>
-            </label>
+            <div class="topbar-action-group topbar-action-group-export" role="group" aria-label="Export actions">
+              <button id="saveCurrentBtn">Export Current JPG</button>
+              <button id="exportAllBtn">Export All JPG</button>
+              <button id="exportMergedHdrBtn">Batch HDR Export</button>
+              <label class="quality-inline" for="hdrExportQuality">
+                <span>Quality</span>
+                <input type="range" id="hdrExportQuality" min="60" max="100" value="92" />
+                <span id="hdrExportQualityValue">92</span>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -87,93 +91,97 @@
 
                 <div class="left-stack-content" id="hdrWorkflowContent">
                   <div class="controls-section hdr-workflow" id="hdrWorkflow">
-                    <div class="hdr-workflow-head">
-                      <div>
-                        <h3>Batch HDR Merge</h3>
-                        <p>Detect bracketed RAW sets and output 16-bit TIFF masters</p>
+                    <div class="hdr-top-area">
+                      <div class="hdr-workflow-head">
+                        <div>
+                          <h3>Batch HDR Merge</h3>
+                          <p>Detect bracketed RAW sets and output 16-bit TIFF masters</p>
+                        </div>
+                      </div>
+
+                      <div class="hdr-action-row">
+                        <button class="primary hdr-primary-action" id="startHdrMergePanelBtn">Start HDR Merge</button>
+                        <button class="quiet" id="cancelHdrMergeBtn">Cancel</button>
+                      </div>
+
+                      <div class="hdr-action-row hdr-action-row-secondary">
+                        <button class="open-output" id="openHdrOutputFolderBtn">Open Output Folder</button>
+                        <button class="retry" id="retryFailedBtn">Retry Failed</button>
+                      </div>
+
+                      <div class="hdr-select-grid">
+                        <label>
+                          Merge Mode
+                          <select id="hdrModeSelect">
+                            <option value="fusion" selected>Natural Fusion</option>
+                            <option value="hdr">HDR Merge</option>
+                          </select>
+                        </label>
+                        <label>
+                          Bracket Size
+                          <select id="hdrBracketSelect">
+                            <option value="auto" selected>Auto</option>
+                            <option value="3">3-shot</option>
+                            <option value="5">5-shot</option>
+                          </select>
+                        </label>
+                        <label>
+                          Concurrency
+                          <select id="hdrConcurrencySelect">
+                            <option value="1" selected>1 (Safest)</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <div class="hdr-action-hint" id="hdrActionHint">
+                        1) Add HDR Folder, 2) review detected sets, 3) press Start HDR Merge.
                       </div>
                     </div>
 
-                    <div class="hdr-action-row">
-                      <button class="primary hdr-primary-action" id="startHdrMergePanelBtn">Start HDR Merge</button>
-                      <button class="quiet" id="cancelHdrMergeBtn">Cancel</button>
-                    </div>
+                    <div class="hdr-status-area">
+                      <div class="hdr-status-shell">
+                        <div class="progress-wrap">
+                          <div class="progress-bar" id="hdrOverallProgressBar" style="width:0%;"></div>
+                        </div>
 
-                    <div class="hdr-action-row hdr-action-row-secondary">
-                      <button class="open-output" id="openHdrOutputFolderBtn">Open Output Folder</button>
-                      <button class="retry" id="retryFailedBtn">Retry Failed</button>
-                    </div>
+                        <div class="hdr-progress-meta">
+                          <span id="hdrOverallProgressText">0 / 0 sets</span>
+                        </div>
 
-                    <div class="hdr-action-hint" id="hdrActionHint">
-                      1) Add HDR Folder, 2) review detected sets, 3) press Start HDR Merge.
-                    </div>
-
-                    <div class="hdr-select-grid">
-                      <label>
-                        Merge Mode
-                        <select id="hdrModeSelect">
-                          <option value="fusion" selected>Natural Fusion</option>
-                          <option value="hdr">HDR Merge</option>
-                        </select>
-                      </label>
-                      <label>
-                        Bracket Size
-                        <select id="hdrBracketSelect">
-                          <option value="auto" selected>Auto</option>
-                          <option value="3">3-shot</option>
-                          <option value="5">5-shot</option>
-                        </select>
-                      </label>
-                      <label>
-                        Concurrency
-                        <select id="hdrConcurrencySelect">
-                          <option value="1" selected>1 (Safest)</option>
-                          <option value="2">2</option>
-                          <option value="3">3</option>
-                          <option value="4">4</option>
-                        </select>
-                      </label>
-                    </div>
-
-                    <div class="hdr-status-shell">
-                      <div class="progress-wrap">
-                        <div class="progress-bar" id="hdrOverallProgressBar" style="width:0%;"></div>
-                      </div>
-
-                      <div class="hdr-progress-meta">
-                        <span id="hdrOverallProgressText">0 / 0 sets</span>
-                      </div>
-
-                      <div class="hdr-status-compact" id="hdrStatusCompact">
-                        No HDR folder selected yet.
-                      </div>
-
-                      <button
-                        class="hdr-details-toggle"
-                        id="toggleHdrDetailsBtn"
-                        aria-expanded="false"
-                        aria-controls="hdrDetailsContent"
-                      >
-                        <span class="hdr-details-chevron" aria-hidden="true"></span>
-                        <span>Show Details</span>
-                      </button>
-
-                      <div class="hdr-details-content is-collapsed" id="hdrDetailsContent">
-                        <div class="hdr-summary" id="hdrSummary">
+                        <div class="hdr-status-compact" id="hdrStatusCompact">
                           No HDR folder selected yet.
                         </div>
 
-                        <div class="hdr-list-wrap">
-                          <div class="hdr-list-title">Merge Queue</div>
-                          <div class="hdr-set-list" id="hdrSetList">
-                            <div class="mini-note">Queue is idle.</div>
-                          </div>
-                        </div>
+                        <button
+                          class="hdr-details-toggle"
+                          id="toggleHdrDetailsBtn"
+                          aria-expanded="false"
+                          aria-controls="hdrDetailsContent"
+                        >
+                          <span class="hdr-details-chevron" aria-hidden="true"></span>
+                          <span>Show Details</span>
+                        </button>
 
-                        <div class="hdr-list-wrap">
-                          <div class="hdr-list-title">Recent Errors</div>
-                          <div class="hdr-error-list" id="hdrErrorList">
-                            <div class="mini-note">No errors.</div>
+                        <div class="hdr-details-content is-collapsed" id="hdrDetailsContent">
+                          <div class="hdr-summary" id="hdrSummary">
+                            No HDR folder selected yet.
+                          </div>
+
+                          <div class="hdr-list-wrap">
+                            <div class="hdr-list-title">Merge Queue</div>
+                            <div class="hdr-set-list" id="hdrSetList">
+                              <div class="mini-note">Queue is idle.</div>
+                            </div>
+                          </div>
+
+                          <div class="hdr-list-wrap">
+                            <div class="hdr-list-title">Recent Errors</div>
+                            <div class="hdr-error-list" id="hdrErrorList">
+                              <div class="mini-note">No errors.</div>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -330,6 +338,11 @@
     </div>
   </div>
 
+  <script src="./renderer-state.js"></script>
+  <script src="./preview-pipeline.js"></script>
+  <script src="./histogram.js"></script>
+  <script src="./auto-fix.js"></script>
+  <script src="./editor-regression-core.js"></script>
   <script src="./renderer.js"></script>
 </body>
 </html>

@@ -10,6 +10,7 @@
     "test:hdr-samples": "node tests/validate-hdr-samples.js",
     "test:bracket-grouping": "node tests/validate-bracket-grouping.js",
     "test:merge-isolation": "node tests/validate-merge-input-isolation.js",
+    "test:editor-regressions": "node tests/validate-editor-regressions.js",
     "stage:helpers": "bash scripts/stage-macos-helpers.sh",
     "verify:helpers": "node scripts/verify-helper-bundle.js",
     "verify:helpers:packaged": "node scripts/verify-packaged-helpers.js",

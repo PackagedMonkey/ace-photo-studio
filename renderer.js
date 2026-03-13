@@ -1,24 +1,31 @@
 console.log('ACE Photo Studio renderer loaded');
 
 const RAW_FILE_PATTERN = /\.(dng|cr2|cr3|nef|arw|raf|orf|rw2|pef|srw)$/i;
+const editorCore = (typeof window !== 'undefined' && window.AceEditorCore) ? window.AceEditorCore : null;
+const previewPipeline = (typeof window !== 'undefined' && window.AcePreviewPipeline) ? window.AcePreviewPipeline : null;
+const histogramModule = (typeof window !== 'undefined' && window.AceHistogram) ? window.AceHistogram : null;
+const autoFixModule = (typeof window !== 'undefined' && window.AceAutoFix) ? window.AceAutoFix : null;
+const rendererStateModule = (typeof window !== 'undefined' && window.AceRendererState) ? window.AceRendererState : null;
 
-const defaultAdjustments = {
-  exposure: 0,
-  contrast: 0,
-  vibrance: 0,
-  saturation: 0,
-  warmth: 0,
-  shadows: 0,
-  highlights: 0,
-  whites: 0,
-  blacks: 0,
-  toneCurve: 0,
-  clarity: 0,
-  dehaze: 0,
-  sharpen: 0,
-  denoise: 0,
-  rotation: 0,
-};
+const defaultAdjustments = editorCore?.defaultAdjustments
+  ? { ...editorCore.defaultAdjustments }
+  : {
+    exposure: 0,
+    contrast: 0,
+    vibrance: 0,
+    saturation: 0,
+    warmth: 0,
+    shadows: 0,
+    highlights: 0,
+    whites: 0,
+    blacks: 0,
+    toneCurve: 0,
+    clarity: 0,
+    dehaze: 0,
+    sharpen: 0,
+    denoise: 0,
+    rotation: 0,
+  };
 
 const controlsConfig = [
   { key: 'exposure', label: 'Exposure', min: -400, max: 400, step: 1 },
@@ -36,22 +43,24 @@ const controlsConfig = [
   { key: 'denoise', label: 'Denoise', min: 0, max: 100 },
 ];
 
-const PRESET_ADJUSTMENT_KEYS = [
-  'exposure',
-  'contrast',
-  'highlights',
-  'shadows',
-  'whites',
-  'blacks',
-  'toneCurve',
-  'clarity',
-  'dehaze',
-  'vibrance',
-  'saturation',
-  'warmth',
-  'sharpen',
-  'denoise',
-];
+const PRESET_ADJUSTMENT_KEYS = editorCore?.PRESET_ADJUSTMENT_KEYS
+  ? [...editorCore.PRESET_ADJUSTMENT_KEYS]
+  : [
+    'exposure',
+    'contrast',
+    'highlights',
+    'shadows',
+    'whites',
+    'blacks',
+    'toneCurve',
+    'clarity',
+    'dehaze',
+    'vibrance',
+    'saturation',
+    'warmth',
+    'sharpen',
+    'denoise',
+  ];
 
 const BUILTIN_DROPDOWN_PRESETS = [
   {
@@ -156,46 +165,11 @@ const FLAT_HDR_RECOVERY_TRIGGER = 0.36;
 // but disabled by default to avoid preview/export tone mismatches.
 const GPU_PREVIEW_MODE = 'disabled'; // 'disabled' | 'experimental_fast'
 
-const state = {
-  photos: [],
-  selectedId: null,
-  selectedPhotoIds: new Set(),
-  selectionAnchorId: null,
-  libraryInteractionActive: false,
-  applyToAll: false,
-  zoom: 1,
-  fitZoom: 1,
-  panX: 0,
-  panY: 0,
-  isPanning: false,
-  lastPanX: 0,
-  lastPanY: 0,
-  previewMode: 'split',
-  activePreset: null,
-  userSavedPresets: [],
-  selectedPresetOptionId: '',
-  sliderPosition: 50,
-  hdr: {
-    folderPath: null,
-    sourceFiles: [],
-    detection: null,
-    queue: null,
-    loadedQueueId: null,
-  },
-  loadedMergedPaths: new Set(),
-  previewPerf: {
-    fastTimer: null,
-    fullTimer: null,
-    lastFastScheduleAt: 0,
-    lastInteractionAt: 0,
-    fastInFlight: false,
-    pendingFast: false,
-  },
-  histogram: {
-    refreshTimer: null,
-    requestToken: 0,
-  },
-};
+if (!rendererStateModule?.createRendererState) {
+  throw new Error('Renderer state module unavailable.');
+}
+
+const state = rendererStateModule.createRendererState();
 
 let previewHandlersBound = false;
 
@@ -411,26 +385,47 @@ function mergedHdrBaseAdjustments() {
   return { ...defaultAdjustments };
 }
 
+function resolveRenderAdjustments(adjustments = null) {
+  if (editorCore?.resolveRenderAdjustments) {
+    return editorCore.resolveRenderAdjustments(adjustments, defaultAdjustments);
+  }
+  return {
+    ...defaultAdjustments,
+    ...(adjustments || {}),
+  };
+}
+
 function photoPreviewUrl(photo) {
   return photo?.processedUrl || photo?.fastProcessedUrl || photo?.originalUrl;
 }
 
 function clearPreviewTimers() {
-  if (state.previewPerf.fastTimer) {
-    clearTimeout(state.previewPerf.fastTimer);
-    state.previewPerf.fastTimer = null;
+  if (state.preview.perf.fastTimer) {
+    clearTimeout(state.preview.perf.fastTimer);
+    state.preview.perf.fastTimer = null;
   }
 
-  if (state.previewPerf.fullTimer) {
-    clearTimeout(state.previewPerf.fullTimer);
-    state.previewPerf.fullTimer = null;
+  if (state.preview.perf.fullTimer) {
+    clearTimeout(state.preview.perf.fullTimer);
+    state.preview.perf.fullTimer = null;
   }
 
-  state.previewPerf.pendingFast = false;
+  state.preview.perf.pendingFast = false;
   if (state.histogram.refreshTimer) {
     clearTimeout(state.histogram.refreshTimer);
     state.histogram.refreshTimer = null;
   }
+}
+
+function queueViewportQualityRefresh({ debounceMs = 180 } = {}) {
+  const photo = selectedPhoto();
+  if (!photo) return;
+
+  queueSelectedPreviewRender({
+    fastMode: false,
+    debounceMs: Math.max(0, debounceMs),
+    fullRender: false,
+  });
 }
 
 function markPhotoAdjustmentsDirty(photo) {
@@ -505,29 +500,29 @@ function queueSelectedPreviewRender({
   const expectedVersion = photo.adjustVersion || 0;
   const timerKey = fastMode ? 'fastTimer' : 'fullTimer';
 
-  if (fastMode && state.previewPerf.fastInFlight) {
-    state.previewPerf.pendingFast = true;
+  if (fastMode && state.preview.perf.fastInFlight) {
+    state.preview.perf.pendingFast = true;
     return;
   }
 
-  if (state.previewPerf[timerKey]) {
-    clearTimeout(state.previewPerf[timerKey]);
-    state.previewPerf[timerKey] = null;
+  if (state.preview.perf[timerKey]) {
+    clearTimeout(state.preview.perf[timerKey]);
+    state.preview.perf[timerKey] = null;
   }
 
   let waitMs = Math.max(0, debounceMs);
   if (fastMode) {
     const now = Date.now();
-    const delta = now - state.previewPerf.lastFastScheduleAt;
+    const delta = now - state.preview.perf.lastFastScheduleAt;
     waitMs = Math.max(waitMs, Math.max(0, FAST_PREVIEW_THROTTLE_MS - delta));
-    state.previewPerf.lastFastScheduleAt = now + waitMs;
+    state.preview.perf.lastFastScheduleAt = now + waitMs;
   }
 
-  state.previewPerf[timerKey] = setTimeout(() => {
-    state.previewPerf[timerKey] = null;
+  state.preview.perf[timerKey] = setTimeout(() => {
+    state.preview.perf[timerKey] = null;
 
     if (!fastMode) {
-      const idleDelta = Date.now() - (state.previewPerf.lastInteractionAt || 0);
+      const idleDelta = Date.now() - (state.preview.perf.lastInteractionAt || 0);
       if (idleDelta < SETTLED_PREVIEW_IDLE_GUARD_MS) {
         queueSelectedPreviewRender({
           fastMode: false,
@@ -779,121 +774,24 @@ function previewImageSizeStyle(photo) {
 }
 
 function histogramSourceKeyForPhoto(photo) {
-  if (!photo) return '';
-  const mode = photo.processedUrl ? 'processed' : 'original';
-  return `${photo.id}:${photo.adjustVersion || 0}:${mode}`;
-}
-
-function resizeHistogramCanvas(canvas) {
-  const dpr = clamp(typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1, 1, 2);
-  const cssWidth = Math.max(1, Math.round(canvas.clientWidth || 1));
-  const cssHeight = Math.max(1, Math.round(canvas.clientHeight || 1));
-  const targetWidth = Math.max(1, Math.round(cssWidth * dpr));
-  const targetHeight = Math.max(1, Math.round(cssHeight * dpr));
-
-  if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
-    canvas.width = targetWidth;
-    canvas.height = targetHeight;
-  }
-
-  return { width: targetWidth, height: targetHeight };
+  if (!histogramModule?.sourceKeyForPhoto) return '';
+  return histogramModule.sourceKeyForPhoto(photo);
 }
 
 function drawHistogramBins(bins = null) {
-  const canvas = el.histogramCanvas;
-  if (!canvas) return;
-
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-
-  const { width, height } = resizeHistogramCanvas(canvas);
-  ctx.clearRect(0, 0, width, height);
-
-  const plotPaddingX = 4;
-  const plotPaddingY = 3;
-  const plotWidth = Math.max(1, width - (plotPaddingX * 2));
-  const plotHeight = Math.max(1, height - (plotPaddingY * 2));
-
-  const baseGradient = ctx.createLinearGradient(0, 0, 0, height);
-  baseGradient.addColorStop(0, 'rgba(24, 33, 48, 0.9)');
-  baseGradient.addColorStop(1, 'rgba(10, 15, 24, 0.96)');
-  ctx.fillStyle = baseGradient;
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.strokeStyle = 'rgba(130, 148, 184, 0.24)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(plotPaddingX, height - plotPaddingY - 0.5);
-  ctx.lineTo(width - plotPaddingX, height - plotPaddingY - 0.5);
-  ctx.stroke();
-
-  if (!Array.isArray(bins) || !bins.length) {
-    return;
-  }
-
-  const maxBin = Math.max(1, ...bins);
-  const lineColor = 'rgba(173, 201, 255, 0.96)';
-  const fillGradient = ctx.createLinearGradient(0, plotPaddingY, 0, height - plotPaddingY);
-  fillGradient.addColorStop(0, 'rgba(118, 160, 255, 0.54)');
-  fillGradient.addColorStop(1, 'rgba(70, 112, 196, 0.08)');
-
-  ctx.beginPath();
-  for (let i = 0; i < bins.length; i += 1) {
-    const normalized = clamp(bins[i] / maxBin, 0, 1);
-    const x = plotPaddingX + (i / (bins.length - 1)) * plotWidth;
-    const y = plotPaddingY + (1 - normalized) * plotHeight;
-    if (i === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
-  }
-
-  ctx.lineTo(width - plotPaddingX, height - plotPaddingY);
-  ctx.lineTo(plotPaddingX, height - plotPaddingY);
-  ctx.closePath();
-  ctx.fillStyle = fillGradient;
-  ctx.fill();
-
-  ctx.beginPath();
-  for (let i = 0; i < bins.length; i += 1) {
-    const normalized = clamp(bins[i] / maxBin, 0, 1);
-    const x = plotPaddingX + (i / (bins.length - 1)) * plotWidth;
-    const y = plotPaddingY + (1 - normalized) * plotHeight;
-    if (i === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
-  }
-  ctx.strokeStyle = lineColor;
-  ctx.lineWidth = 1.1;
-  ctx.stroke();
+  if (!el.histogramCanvas || !histogramModule?.drawHistogramBins) return;
+  histogramModule.drawHistogramBins(el.histogramCanvas, bins);
 }
 
 function buildLuminanceHistogramFromImage(image, binCount = HISTOGRAM_BIN_COUNT) {
-  const bins = new Array(binCount).fill(0);
-  if (!image?.width || !image?.height) return bins;
-
-  const canvas = document.createElement('canvas');
-  const scale = Math.min(HISTOGRAM_MAX_DIMENSION / image.width, HISTOGRAM_MAX_DIMENSION / image.height, 1);
-  canvas.width = Math.max(1, Math.round(image.width * scale));
-  canvas.height = Math.max(1, Math.round(image.height * scale));
-
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return bins;
-
-  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-
-  for (let i = 0; i < data.length; i += 4) {
-    const luma = (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
-    const bucket = clamp(Math.floor(luma * (binCount - 1)), 0, binCount - 1);
-    bins[bucket] += 1;
+  if (!histogramModule?.buildLuminanceHistogramFromImage) {
+    return new Array(binCount).fill(0);
   }
-
-  return bins;
+  return histogramModule.buildLuminanceHistogramFromImage(image, {
+    binCount,
+    maxDimension: HISTOGRAM_MAX_DIMENSION,
+    documentRef: document,
+  });
 }
 
 async function resolveHistogramSourceImage(photo) {
@@ -959,119 +857,40 @@ function scheduleHistogramRefresh({ force = false, delayMs = HISTOGRAM_REFRESH_D
   }, Math.max(0, delayMs));
 }
 
-function applyWarmthNormalized(r, g, b, warmth) {
-  const amt = warmth / 100;
-  return [
-    clamp(r + 0.11 * amt, 0, 1),
-    clamp(g + 0.02 * amt, 0, 1),
-    clamp(b - 0.1 * amt, 0, 1),
-  ];
-}
-
-function applyVibranceSaturation(r, g, b, saturationFactor) {
-  const satDelta = saturationFactor - 1;
-  if (Math.abs(satDelta) < 0.0001) return [r, g, b];
-
-  const gray = luminanceLinear(r, g, b);
-  const maxV = Math.max(r, g, b);
-  const minV = Math.min(r, g, b);
-  const satLocal = maxV > 0 ? (maxV - minV) / maxV : 0;
-
-  const weakColorWeight = 1 - satLocal;
-  const highlightProtect = 1 - smoothstep(0.78, 1.0, gray);
-  const scale = satDelta >= 0
-    ? 1 + satDelta * (0.22 + weakColorWeight * 0.78) * highlightProtect
-    : 1 + satDelta * 0.85;
-
-  return [
-    clamp(gray + (r - gray) * scale, 0, 1),
-    clamp(gray + (g - gray) * scale, 0, 1),
-    clamp(gray + (b - gray) * scale, 0, 1),
-  ];
-}
-
-function smoothstep(edge0, edge1, x) {
-  const t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
-  return t * t * (3 - 2 * t);
-}
-
-function srgbToLinear(value) {
-  if (value <= 0.04045) return value / 12.92;
-  return Math.pow((value + 0.055) / 1.055, 2.4);
-}
-
-function linearToSrgb(value) {
-  if (value <= 0.0031308) return value * 12.92;
-  return 1.055 * Math.pow(value, 1 / 2.4) - 0.055;
-}
-
-function luminanceLinear(r, g, b) {
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-function applyFilmicLuminance(value, toe, shoulder, gamma) {
-  const safe = Math.max(0, value);
-  const toeCut = Math.max(0, safe - toe);
-  const shoulderMapped = toeCut / (1 + shoulder * toeCut);
-  return Math.pow(clamp(shoulderMapped, 0, 1), gamma);
-}
-
-function applySubtleSCurve(value, strength = 0) {
-  const x = clamp(value, 0, 1);
-  const safeStrength = clamp(strength, 0, 0.35);
-  const curveDelta = x * (1 - x) * (2 * x - 1);
-  return clamp(x + curveDelta * safeStrength, 0, 1);
-}
-
-function percentileFromHistogram(histogram, total, percentile) {
-  if (!total) return 0;
-
-  const target = clamp(percentile, 0, 1) * total;
-  let cumulative = 0;
-  for (let i = 0; i < histogram.length; i++) {
-    cumulative += histogram[i];
-    if (cumulative >= target) return i;
+function buildFallbackImageStats(isHdrMerged = false) {
+  if (autoFixModule?.buildFallbackImageStats) {
+    return autoFixModule.buildFallbackImageStats(isHdrMerged, { coreApi: editorCore });
   }
 
-  return histogram.length - 1;
-}
-
-function buildFallbackImageStats(isHdrMerged = false) {
-  const meanLuminance = isHdrMerged ? 0.49 : 0.47;
-  const p5Luminance = isHdrMerged ? 0.07 : 0.06;
-  const p25Luminance = isHdrMerged ? 0.33 : 0.31;
-  const p50Luminance = isHdrMerged ? 0.5 : 0.48;
-  const p75Luminance = isHdrMerged ? 0.68 : 0.66;
-  const p95Luminance = isHdrMerged ? 0.91 : 0.9;
-  const dynamicRange = isHdrMerged ? 0.84 : 0.84;
-  const sat5 = isHdrMerged ? 0.11 : 0.1;
-  const sat95 = isHdrMerged ? 0.57 : 0.55;
+  if (editorCore?.buildFallbackImageStats) {
+    return editorCore.buildFallbackImageStats(isHdrMerged);
+  }
 
   return {
-    meanLuminance,
-    meanLuma: meanLuminance,
-    medianLuma: p50Luminance,
-    p5Luminance,
-    p25Luminance,
-    p50Luminance,
-    p75Luminance,
-    p95Luminance,
-    p5Luma: p5Luminance,
-    p25Luma: p25Luminance,
-    p50Luma: p50Luminance,
-    p75Luma: p75Luminance,
-    p95Luma: p95Luminance,
-    dynamicRange,
-    midtoneSpread: p75Luminance - p25Luminance,
+    meanLuminance: 0.47,
+    meanLuma: 0.47,
+    medianLuma: 0.48,
+    p5Luminance: 0.06,
+    p25Luminance: 0.31,
+    p50Luminance: 0.48,
+    p75Luminance: 0.66,
+    p95Luminance: 0.9,
+    p5Luma: 0.06,
+    p25Luma: 0.31,
+    p50Luma: 0.48,
+    p75Luma: 0.66,
+    p95Luma: 0.9,
+    dynamicRange: 0.84,
+    midtoneSpread: 0.35,
     midDensity: 0.34,
     highlightDensity: 0.06,
     shadowDensity: 0.08,
     highlightClipPercent: 0.005,
     shadowClipPercent: 0.01,
     averageSaturation: 0.32,
-    sat5,
-    sat95,
-    satSpread: sat95 - sat5,
+    sat5: 0.1,
+    sat95: 0.55,
+    satSpread: 0.45,
     averageRed: 0.5,
     averageGreen: 0.5,
     averageBlue: 0.5,
@@ -1081,508 +900,57 @@ function buildFallbackImageStats(isHdrMerged = false) {
 }
 
 function analyzeImageStats(imageData) {
-  if (!imageData?.data?.length) {
-    return buildFallbackImageStats(false);
+  if (autoFixModule?.analyzeImageStats) {
+    return autoFixModule.analyzeImageStats(imageData, { coreApi: editorCore });
   }
 
-  const luminanceHistogram = new Array(256).fill(0);
-  const saturationHistogram = new Array(256).fill(0);
-  const data = imageData.data;
-  let total = 0;
-  let lumaSum = 0;
-  let satSum = 0;
-  let redSum = 0;
-  let greenSum = 0;
-  let blueSum = 0;
-  let highlightClip = 0;
-  let shadowClip = 0;
-  let midDensityCount = 0;
-  let highlightDensityCount = 0;
-  let shadowDensityCount = 0;
-
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i] / 255;
-    const g = data[i + 1] / 255;
-    const b = data[i + 2] / 255;
-    const luma = clamp(0.2126 * r + 0.7152 * g + 0.0722 * b, 0, 1);
-    const bucket = clamp(Math.round(luma * 255), 0, 255);
-    const maxV = Math.max(r, g, b);
-    const minV = Math.min(r, g, b);
-    const saturation = maxV <= 0 ? 0 : (maxV - minV) / maxV;
-    const satBucket = clamp(Math.round(saturation * 255), 0, 255);
-
-    luminanceHistogram[bucket] += 1;
-    saturationHistogram[satBucket] += 1;
-    lumaSum += luma;
-    redSum += r;
-    greenSum += g;
-    blueSum += b;
-    satSum += saturation;
-    if (luma >= 0.35 && luma <= 0.65) midDensityCount += 1;
-    if (luma >= 0.9 && luma <= 0.98) highlightDensityCount += 1;
-    if (luma >= 0.02 && luma <= 0.1) shadowDensityCount += 1;
-    if (luma > 0.98) highlightClip += 1;
-    if (luma < 0.02) shadowClip += 1;
-    total += 1;
-  }
-
-  if (!total) {
-    return buildFallbackImageStats(false);
-  }
-
-  const p5 = percentileFromHistogram(luminanceHistogram, total, 0.05) / 255;
-  const p25 = percentileFromHistogram(luminanceHistogram, total, 0.25) / 255;
-  const p50 = percentileFromHistogram(luminanceHistogram, total, 0.5) / 255;
-  const p75 = percentileFromHistogram(luminanceHistogram, total, 0.75) / 255;
-  const p95 = percentileFromHistogram(luminanceHistogram, total, 0.95) / 255;
-  const sat5 = percentileFromHistogram(saturationHistogram, total, 0.05) / 255;
-  const sat95 = percentileFromHistogram(saturationHistogram, total, 0.95) / 255;
-  const meanLuma = lumaSum / total;
-  const dynamicRange = clamp(p95 - p5, 0, 1);
-  const midtoneSpread = clamp(p75 - p25, 0, 1);
-  const averageRed = redSum / total;
-  const averageGreen = greenSum / total;
-  const averageBlue = blueSum / total;
-  const colorBalance = averageRed - averageBlue;
-  const colorCast = Math.abs(averageRed - averageGreen) + Math.abs(averageGreen - averageBlue);
-
-  return {
-    meanLuminance: meanLuma,
-    meanLuma,
-    medianLuma: p50,
-    p5Luminance: p5,
-    p25Luminance: p25,
-    p50Luminance: p50,
-    p75Luminance: p75,
-    p95Luminance: p95,
-    p5Luma: p5,
-    p25Luma: p25,
-    p50Luma: p50,
-    p75Luma: p75,
-    p95Luma: p95,
-    dynamicRange,
-    midtoneSpread,
-    midDensity: midDensityCount / total,
-    highlightDensity: highlightDensityCount / total,
-    shadowDensity: shadowDensityCount / total,
-    highlightClipPercent: highlightClip / total,
-    shadowClipPercent: shadowClip / total,
-    averageSaturation: satSum / total,
-    sat5,
-    sat95,
-    satSpread: clamp(sat95 - sat5, 0, 1),
-    averageRed,
-    averageGreen,
-    averageBlue,
-    colorBalance,
-    colorCast,
-  };
+  return buildFallbackImageStats(false);
 }
 
 function analyzeImageStatsFromImage(image) {
-  const canvas = document.createElement('canvas');
-  const scale = Math.min(ANALYSIS_MAX_DIMENSION / image.width, ANALYSIS_MAX_DIMENSION / image.height, 1);
-  canvas.width = Math.max(1, Math.round(image.width * scale));
-  canvas.height = Math.max(1, Math.round(image.height * scale));
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  return analyzeImageStats(imageData);
+  if (autoFixModule?.analyzeImageStatsFromImage) {
+    return autoFixModule.analyzeImageStatsFromImage(image, {
+      analysisMaxDimension: ANALYSIS_MAX_DIMENSION,
+      documentRef: document,
+      coreApi: editorCore,
+    });
+  }
+
+  return buildFallbackImageStats(false);
 }
 
 function clampEditorAdjustments(adjustments, { rotation = 0 } = {}) {
+  if (autoFixModule?.clampEditorAdjustments) {
+    return autoFixModule.clampEditorAdjustments(adjustments, { rotation, coreApi: editorCore });
+  }
+
+  if (editorCore?.clampEditorAdjustments) {
+    return editorCore.clampEditorAdjustments(adjustments, { rotation });
+  }
+
   return {
-    exposure: clamp(Math.round(adjustments.exposure || 0), -400, 400),
-    contrast: clamp(Math.round(adjustments.contrast || 0), -100, 100),
-    highlights: clamp(Math.round(adjustments.highlights || 0), -100, 100),
-    shadows: clamp(Math.round(adjustments.shadows || 0), -100, 100),
-    whites: clamp(Math.round(adjustments.whites || 0), -100, 100),
-    blacks: clamp(Math.round(adjustments.blacks || 0), -100, 100),
-    toneCurve: clamp(Math.round(adjustments.toneCurve || 0), 0, 100),
-    clarity: clamp(Math.round(adjustments.clarity || 0), -100, 100),
-    dehaze: clamp(Math.round(adjustments.dehaze || 0), -100, 100),
-    vibrance: clamp(Math.round(adjustments.vibrance || 0), -100, 100),
-    saturation: clamp(Math.round(adjustments.saturation || 0), -100, 100),
-    warmth: clamp(Math.round(adjustments.warmth || 0), -100, 100),
-    sharpen: clamp(Math.round(adjustments.sharpen || 0), 0, 100),
-    denoise: clamp(Math.round(adjustments.denoise || 0), 0, 100),
+    ...defaultAdjustments,
+    ...(adjustments || {}),
     rotation: ((Math.round(rotation) % 360) + 360) % 360,
   };
 }
 
 function estimateAutoAdjustments(stats, profile = 'natural', { isHdrMerged = false, rotation = 0 } = {}) {
-  const sourceStats = stats || buildFallbackImageStats(isHdrMerged);
-  const meanLuma = clamp(sourceStats.meanLuminance ?? sourceStats.meanLuma ?? 0.5, 0, 1);
-  const medianLuma = clamp(sourceStats.medianLuma ?? meanLuma, 0, 1);
-  const p5 = clamp(sourceStats.p5Luminance ?? sourceStats.p5Luma ?? 0.06, 0, 1);
-  const p25 = clamp(sourceStats.p25Luminance ?? sourceStats.p25Luma ?? ((medianLuma + p5) / 2), 0, 1);
-  const p75 = clamp(sourceStats.p75Luminance ?? sourceStats.p75Luma ?? ((medianLuma + (sourceStats.p95Luminance ?? sourceStats.p95Luma ?? 0.9)) / 2), 0, 1);
-  const p95 = clamp(sourceStats.p95Luminance ?? sourceStats.p95Luma ?? 0.9, 0, 1);
-  const dynamicRange = clamp(sourceStats.dynamicRange ?? (p95 - p5), 0, 1);
-  const midtoneSpread = clamp(sourceStats.midtoneSpread ?? (p75 - p25), 0, 1);
-  const midDensity = clamp(sourceStats.midDensity ?? 0.34, 0, 1);
-  const highlightDensity = clamp(sourceStats.highlightDensity ?? 0.06, 0, 1);
-  const shadowDensity = clamp(sourceStats.shadowDensity ?? 0.08, 0, 1);
-  const highlightClipPercent = clamp(sourceStats.highlightClipPercent ?? 0, 0, 1);
-  const shadowClipPercent = clamp(sourceStats.shadowClipPercent ?? 0, 0, 1);
-  const averageSaturation = clamp(sourceStats.averageSaturation ?? 0.32, 0, 1);
-  const satSpread = clamp(sourceStats.satSpread ?? ((sourceStats.sat95 ?? 0.55) - (sourceStats.sat5 ?? 0.1)), 0, 1);
-  const averageRed = clamp(sourceStats.averageRed ?? 0.5, 0, 1);
-  const averageGreen = clamp(sourceStats.averageGreen ?? 0.5, 0, 1);
-  const averageBlue = clamp(sourceStats.averageBlue ?? 0.5, 0, 1);
-  const colorBalance = clamp(sourceStats.colorBalance ?? (averageRed - averageBlue), -1, 1);
-  const colorCast = clamp(sourceStats.colorCast ?? (Math.abs(averageRed - averageGreen) + Math.abs(averageGreen - averageBlue)), 0, 2);
-  const toeSpan = clamp(medianLuma - p5, 0, 1);
-  const shoulderSpan = clamp(p95 - medianLuma, 0, 1);
-  const tonalCrowding = clamp((0.24 - Math.min(toeSpan, shoulderSpan)) / 0.24, 0, 1);
-  const midtoneCompression = clamp((0.34 - midtoneSpread) / 0.18, 0, 1);
-  const midCrowding = clamp((midDensity - 0.46) / 0.28, 0, 1);
-  const lowSaturationBias = clamp((0.32 - averageSaturation) / 0.22, 0, 1);
-  const lowSatSpreadBias = clamp((0.44 - satSpread) / 0.24, 0, 1);
-  const highlightPressure = clamp(
-    clamp((p95 - 0.93) / 0.05, 0, 1) * 0.4
-    + clamp((highlightDensity - 0.11) / 0.16, 0, 1) * 0.25
-    + clamp((highlightClipPercent - 0.01) / 0.03, 0, 1) * 0.35,
-    0,
-    1
-  );
-  const shadowRisk = clamp(
-    clamp((shadowClipPercent - 0.02) / 0.05, 0, 1) * 0.6
-    + clamp((shadowDensity - 0.2) / 0.25, 0, 1) * 0.4,
-    0,
-    1
-  );
-  const liftedBlacksNeed = clamp((p5 - 0.085) / 0.08, 0, 1) * (1 - shadowRisk);
-  const clipSafety = 1 - clamp(highlightClipPercent * 13 + shadowClipPercent * 11, 0, 1);
-  const centerBias = clamp((midDensity - 0.49) / 0.24, 0, 1);
-  const lowTailCompression = clamp((0.24 - toeSpan) / 0.2, 0, 1);
-  const highTailCompression = clamp((0.27 - shoulderSpan) / 0.2, 0, 1);
-  const centeredHistogramCompression = clamp(
-    centerBias * 0.42
-    + midtoneCompression * 0.24
-    + tonalCrowding * 0.19
-    + ((lowTailCompression + highTailCompression) * 0.5) * 0.15,
-    0,
-    1
-  );
-  const alreadyGoodImage = (
-    dynamicRange >= 0.58
-    && midtoneSpread >= 0.27
-    && averageSaturation >= 0.26
-    && highlightClipPercent <= 0.02
-    && shadowClipPercent <= 0.02
-    && midDensity <= 0.6
-    && p5 >= 0.03
-    && p95 <= 0.965
-  );
-  let flatRecoveryScore = 0;
-  if (isHdrMerged && !alreadyGoodImage) {
-    const lowRangeBias = clamp((0.63 - dynamicRange) / 0.28, 0, 1);
-    const hazeBias = clamp((meanLuma - 0.45) / 0.2, 0, 1) * clamp((0.58 - dynamicRange) / 0.28, 0, 1);
-    flatRecoveryScore = clamp(
-      (
-        lowRangeBias * 0.29
-        + midtoneCompression * 0.28
-        + midCrowding * 0.16
-        + tonalCrowding * 0.09
-        + centeredHistogramCompression * 0.12
-        + (lowSaturationBias * 0.6 + lowSatSpreadBias * 0.4) * 0.06
-      ) * clipSafety,
-      0,
-      1
-    );
-
-    if (dynamicRange > 0.62 && midtoneSpread > 0.3) {
-      flatRecoveryScore *= 0.35;
-    }
-    if (shadowRisk > 0.45 && p5 < 0.07) {
-      flatRecoveryScore *= 0.78;
-    }
-    flatRecoveryScore = clamp(flatRecoveryScore + hazeBias * 0.08, 0, 1);
-  }
-  const needsFlatRecovery = flatRecoveryScore >= FLAT_HDR_RECOVERY_TRIGGER;
-  const antiFlatNeedScore = clamp(
-    flatRecoveryScore * 0.56 + centeredHistogramCompression * 0.44,
-    0,
-    1
-  );
-  const shouldApplyAntiFlatGuard = (
-    isHdrMerged
-    && !alreadyGoodImage
-    && clipSafety > 0.2
-    && antiFlatNeedScore >= 0.34
-    && (
-      needsFlatRecovery
-      || (centeredHistogramCompression > 0.36 && dynamicRange < 0.68)
-    )
-  );
-
-  const targetMid = isHdrMerged ? 0.495 : 0.5;
-  let exposure = (targetMid - medianLuma) * 106 + (0.49 - meanLuma) * 34;
-  exposure -= highlightPressure * 20;
-  if (meanLuma < 0.4 && highlightPressure < 0.35) {
-    exposure += (0.4 - meanLuma) * 26;
-  }
-  if (meanLuma > 0.58) {
-    exposure -= (meanLuma - 0.58) * 30;
-  }
-  if (shadowClipPercent > 0.04 && medianLuma < 0.44) {
-    exposure += clamp((shadowClipPercent - 0.04) * 260, 0, 11);
+  if (autoFixModule?.estimateAutoAdjustments) {
+    return autoFixModule.estimateAutoAdjustments(stats, profile, {
+      isHdrMerged,
+      rotation,
+      coreApi: editorCore,
+      defaultAdjustments,
+      flatHdrRecoveryTrigger: FLAT_HDR_RECOVERY_TRIGGER,
+    });
   }
 
-  let highlights = -((p95 - 0.89) * 165) - highlightPressure * 22;
-  if (p95 < 0.82 && highlightDensity < 0.08) highlights += 5;
-
-  let shadows = ((0.105 - p5) * 160) + shadowClipPercent * 170 - shadowRisk * 8;
-  if (p5 > 0.12) shadows -= (p5 - 0.12) * 90;
-
-  let whites = (0.93 - p95) * 120 - highlightPressure * 10 + clamp((0.11 - highlightDensity) * 20, -8, 6);
-  let blacks = (0.06 - p5) * 118 - shadowClipPercent * 120 - shadowRisk * 12;
-  if (liftedBlacksNeed > 0.18) {
-    blacks -= 4 + liftedBlacksNeed * 8;
-  }
-  if (shadowRisk > 0.22) {
-    blacks += shadowRisk * 12;
+  if (editorCore?.estimateAutoAdjustments) {
+    return editorCore.estimateAutoAdjustments(stats, profile, { isHdrMerged, rotation });
   }
 
-  let contrast = (0.59 - dynamicRange) * 86 + (0.32 - midtoneSpread) * 44 + (0.5 - medianLuma) * 10;
-  if (highlightPressure > 0.45) contrast -= 4;
-  if (shadowRisk > 0.45) contrast -= 3;
-
-  let clarity = 6 + (0.33 - midtoneSpread) * 18 + (0.56 - dynamicRange) * 11;
-  let dehaze = (0.5 - dynamicRange) * 14 + midtoneCompression * 5 + (lowSaturationBias * 0.7 + lowSatSpreadBias * 0.3) * 4;
-  if (highlightPressure > 0.55) dehaze -= 2;
-
-  let vibrance = 10 + (0.32 - averageSaturation) * 80 + (0.44 - satSpread) * 18;
-  let saturation = 3 + (0.3 - averageSaturation) * 26;
-  if (averageSaturation > 0.55) {
-    vibrance -= 4;
-    saturation -= 2;
-  }
-
-  let warmth = clamp((averageBlue - averageRed) * 60, -14, 14);
-  if (colorCast < 0.05) warmth *= 0.4;
-  if (Math.abs(colorBalance) < 0.02) warmth *= 0.7;
-  let toneCurve = 0;
-  let sharpen = isHdrMerged ? 14 : 13;
-  let denoise = isHdrMerged ? 4 : 3;
-
-  if (profile === 'auto') {
-    exposure *= 0.92;
-    contrast -= 1;
-    clarity -= 1;
-    dehaze -= 1;
-    vibrance -= 1;
-    saturation -= 1;
-
-    if (needsFlatRecovery) {
-      const flatStrength = flatRecoveryScore;
-      const depthNeed = clamp(midtoneCompression * 0.55 + midCrowding * 0.45, 0, 1);
-      contrast += 8 + flatStrength * 12 + depthNeed * 4;
-      clarity += 2 + flatStrength * 4 + depthNeed * 2;
-      dehaze += 1 + flatStrength * 4 + depthNeed * 2;
-      whites += 2 + flatStrength * 4;
-      shadows += flatStrength * 3;
-      if (liftedBlacksNeed > 0.1 && shadowRisk < 0.35) {
-        blacks -= 2 + flatStrength * 5 + liftedBlacksNeed * 5;
-      }
-      highlights = Math.min(highlights, -4 - highlightPressure * 7);
-      if (meanLuma > 0.52 && highlightPressure < 0.35) {
-        exposure -= (meanLuma - 0.52) * 18;
-      }
-      contrast = Math.max(contrast, 12 + flatStrength * 14);
-      toneCurve = Math.max(toneCurve, 8 + flatStrength * 11 + depthNeed * 6);
-    }
-    if (highlightPressure > 0.5) {
-      highlights -= 4 + highlightPressure * 5;
-    }
-    if (averageSaturation < 0.3 || satSpread < 0.34) {
-      vibrance += 7 + clamp((0.34 - satSpread) * 12, 0, 5);
-      saturation += 1;
-    }
-    if (shadowRisk > 0.45) {
-      blacks += 6 * shadowRisk;
-      shadows += 3 * shadowRisk;
-    }
-
-    const guardedAutoBlackFloor = alreadyGoodImage
-      ? -6
-      : needsFlatRecovery
-        ? (-8 - flatRecoveryScore * 12)
-        : -14;
-    blacks = Math.max(blacks, guardedAutoBlackFloor);
-    if (!needsFlatRecovery) {
-      toneCurve = Math.min(toneCurve, 6);
-    }
-
-    if (alreadyGoodImage) {
-      contrast = clamp(contrast, -2, 8);
-      highlights = Math.max(highlights, -7);
-      shadows = Math.max(shadows, 1);
-      whites = Math.max(whites, 2);
-      blacks = Math.max(blacks, -5);
-      clarity = clamp(clarity, 3, 9);
-      dehaze = clamp(dehaze, -1, 4);
-      toneCurve = Math.min(toneCurve, 4);
-    } else if (needsFlatRecovery && isHdrMerged && dynamicRange < 0.62) {
-      toneCurve = Math.max(toneCurve, 8 + (0.62 - dynamicRange) * 40);
-    }
-  } else if (profile === 'real-estate') {
-    exposure += 18;
-    contrast += 4;
-    highlights -= 5;
-    shadows += 5;
-    whites += 4;
-    blacks -= 3;
-    clarity += 5;
-    dehaze += 3;
-    vibrance += 2;
-    saturation += 1;
-    sharpen += 1;
-    denoise += 1;
-  } else if (profile === 'punchy') {
-    exposure -= 3;
-    contrast += 8;
-    highlights -= 4;
-    shadows -= 1;
-    whites += 4;
-    blacks -= 6;
-    clarity += 7;
-    dehaze += 3;
-    vibrance += 5;
-    saturation += 2;
-    sharpen += 2;
-  } else if (profile === 'soft') {
-    exposure += 1;
-    contrast -= 3;
-    highlights += 0;
-    shadows += 1;
-    whites -= 1;
-    blacks -= 1;
-    clarity -= 2;
-    dehaze -= 1;
-    vibrance -= 2;
-    saturation -= 1;
-    sharpen -= 1;
-    denoise += 2;
-  }
-
-  if (!['soft', 'auto'].includes(profile) && dynamicRange < 0.46) {
-    contrast = Math.max(contrast, 12);
-    clarity = Math.max(clarity, 8);
-    blacks = Math.min(blacks, -6);
-  }
-
-  if (profile === 'real-estate') {
-    contrast = Math.max(contrast, 16);
-    dehaze = Math.max(dehaze, 2);
-    blacks = alreadyGoodImage ? Math.max(blacks, -5) : Math.min(blacks, -7);
-    highlights = alreadyGoodImage ? Math.max(highlights, -6) : Math.min(highlights, -9);
-  }
-
-  if (profile === 'soft') {
-    contrast = Math.max(contrast, 5);
-    dehaze = Math.max(dehaze, 0);
-    blacks = Math.min(blacks, -4);
-  }
-
-  if ((profile === 'auto' || profile === 'natural') && alreadyGoodImage) {
-    const alreadyGoodExposureBoost = highlightClipPercent > 0.012 ? 30 : 38;
-    exposure += alreadyGoodExposureBoost;
-    contrast = clamp(contrast, -2, 10);
-    highlights = Math.max(highlights, -8);
-    shadows = Math.max(shadows, 1);
-    blacks = Math.max(blacks, -6);
-    whites = Math.max(whites, 2);
-    toneCurve = Math.min(toneCurve, 4);
-  }
-
-  if (profile === 'real-estate' && alreadyGoodImage) {
-    exposure += 16;
-    shadows = Math.max(shadows, 3);
-    whites = Math.max(whites, 5);
-    blacks = Math.max(blacks, -5);
-    highlights = Math.max(highlights, -6);
-    toneCurve = Math.min(toneCurve, 4);
-  }
-
-  if (shouldApplyAntiFlatGuard) {
-    const profileStrengthScale = profile === 'auto'
-      ? 1
-      : profile === 'natural'
-        ? 0.9
-        : profile === 'real-estate'
-          ? 0.84
-          : profile === 'punchy'
-            ? 0.72
-            : 0.62; // soft
-    const antiFlatStrength = clamp(antiFlatNeedScore * profileStrengthScale, 0, 1);
-    const endpointNeed = clamp((0.68 - dynamicRange) / 0.3, 0, 1);
-    const endpointStrength = antiFlatStrength * endpointNeed;
-    const shadowRoom = clamp((p5 - 0.03) / 0.12, 0, 1);
-    const highlightRoom = clamp((0.97 - p95) / 0.12, 0, 1);
-
-    // Controlled endpoint expansion to prevent a middle-bunched histogram.
-    const blackEndpointPush = (2 + endpointStrength * 10) * shadowRoom * (1 - shadowRisk * 0.75);
-    const whiteEndpointLift = (2 + endpointStrength * 10) * highlightRoom * (1 - highlightPressure * 0.75);
-    blacks -= blackEndpointPush;
-    whites += whiteEndpointLift;
-
-    const curveTarget = 6 + antiFlatStrength * 10 + centeredHistogramCompression * 5;
-    toneCurve = Math.max(toneCurve, curveTarget);
-
-    contrast += 3 + antiFlatStrength * 7;
-
-    const microContrastNeed = clamp((0.3 - midtoneSpread) / 0.18, 0, 1);
-    if (microContrastNeed > 0.12) {
-      clarity += (0.8 + antiFlatStrength * 2.6) * microContrastNeed;
-    }
-
-    const hazeNeed = clamp((0.56 - dynamicRange) / 0.24, 0, 1);
-    if (hazeNeed > 0.2) {
-      dehaze += (0.6 + antiFlatStrength * 2.4) * hazeNeed;
-    }
-
-    if (meanLuma > 0.5 && highlightPressure < 0.45) {
-      exposure -= antiFlatStrength * clamp((meanLuma - 0.5) / 0.2, 0, 1) * 7;
-    }
-
-    if (highlightPressure > 0.45 || highlightClipPercent > 0.01) {
-      highlights -= 2 + highlightPressure * 5;
-      whites -= highlightPressure * 4 + highlightClipPercent * 40;
-    }
-
-    if (shadowRisk > 0.45 || shadowClipPercent > 0.02) {
-      blacks += shadowRisk * 7 + shadowClipPercent * 80;
-      shadows += shadowRisk * 3;
-    }
-
-    const blackFloor = -24 + shadowRisk * 8;
-    const whiteCeiling = 68 - highlightPressure * 16;
-    blacks = Math.max(blacks, blackFloor);
-    whites = Math.min(whites, whiteCeiling);
-    toneCurve = Math.min(toneCurve, 24);
-  }
-
-  const shaped = clampEditorAdjustments({
-    ...defaultAdjustments,
-    exposure,
-    contrast,
-    highlights,
-    shadows,
-    whites,
-    blacks,
-    clarity,
-    dehaze,
-    vibrance,
-    saturation,
-    warmth,
-    toneCurve,
-    sharpen,
-    denoise,
-  }, { rotation });
-
-  return shaped;
+  return clampEditorAdjustments({ ...defaultAdjustments }, { rotation });
 }
 
 function schedulePhotoAnalysis(photo, image, { force = false, highPriority = false } = {}) {
@@ -1637,16 +1005,6 @@ async function ensurePhotoAnalysis(photo, { force = false, highPriority = false 
 
   const image = photo.sourceImage || await getPhotoSourceImage(photo);
   return schedulePhotoAnalysis(photo, image, { force: shouldForce, highPriority });
-}
-
-function adjustMaskedTone(value, amount, mask, darkenMultiplier = 1) {
-  if (!amount || !mask) return value;
-
-  if (amount > 0) {
-    return clamp(value + (1 - value) * amount * mask, 0, 1);
-  }
-
-  return clamp(value + value * amount * mask * darkenMultiplier, 0, 1);
 }
 
 function loadImage(src) {
@@ -2091,260 +1449,11 @@ function processPreviewToDataUrl(image, adjustments, jpegQuality = 0.92, options
 
 // All edit controls in renderer apply to preview-backed images only.
 function processImageToDataUrl(image, adjustments, jpegQuality = 0.92, options = {}) {
-  const fastMode = Boolean(options.fastMode);
-  const maxDimension = Number(options.maxDimension || 0);
-  const sourceScale = maxDimension > 0
-    ? Math.min(maxDimension / Math.max(image.width, image.height), 1)
-    : 1;
-  const sourceWidth = Math.max(1, Math.round(image.width * sourceScale));
-  const sourceHeight = Math.max(1, Math.round(image.height * sourceScale));
-  const rotation = adjustments.rotation % 360;
-  const rotate90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
-  const canvas = document.createElement('canvas');
-  canvas.width = rotate90 ? sourceHeight : sourceWidth;
-  canvas.height = rotate90 ? sourceWidth : sourceHeight;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-  ctx.save();
-  ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.rotate((rotation * Math.PI) / 180);
-  ctx.drawImage(
-    image,
-    -sourceWidth / 2,
-    -sourceHeight / 2,
-    sourceWidth,
-    sourceHeight
-  );
-  ctx.restore();
-
-  let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  // TEMPORARILY DISABLED FOR DEBUG:
-  // Bypass lens-correction stage in preview pipeline to isolate washed-out rendering.
-  // imageData = applyLensCorrection(imageData, options?.lensParams);
-  const data = imageData.data;
-  const exposureStops = clamp(adjustments.exposure || 0, -400, 400) / 100;
-  const exposureGain = Math.pow(2, exposureStops);
-  const contrast = clamp(adjustments.contrast || 0, -100, 100) / 100;
-  const vibrance = clamp(adjustments.vibrance || 0, -100, 100) / 100;
-  const saturation = clamp(adjustments.saturation || 0, -100, 100) / 100;
-  const shadows = (adjustments.shadows || 0) / 100;
-  const highlights = (adjustments.highlights || 0) / 100;
-  const whites = (adjustments.whites || 0) / 100;
-  const blacks = (adjustments.blacks || 0) / 100;
-  const clarityBase = (adjustments.clarity || 0) / 100;
-  const dehazeBase = (adjustments.dehaze || 0) / 100;
-  const clarity = fastMode ? clarityBase * 0.7 : clarityBase;
-  const dehaze = fastMode ? dehazeBase * 0.8 : dehazeBase;
-  const warmth = clamp(adjustments.warmth || 0, -100, 100);
-  const contrastPivot = 0.18;
-  const contrastFactor = 1 + contrast * 0.72;
-  const shadowToneAmount = shadows * 0.62;
-  const highlightToneAmount = highlights * 0.78;
-  const whiteToneAmount = whites * 0.5;
-  const blackToneAmount = blacks * 0.58;
-  const vibranceFactor = 1 + vibrance * 0.95;
-  const saturationFactor = 1 + saturation * 0.85;
-  const hasShadows = Math.abs(shadowToneAmount) > 0.0001;
-  const hasHighlights = Math.abs(highlightToneAmount) > 0.0001;
-  const hasWhites = Math.abs(whiteToneAmount) > 0.0001;
-  const hasBlacks = Math.abs(blackToneAmount) > 0.0001;
-  const hasContrast = Math.abs(contrastFactor - 1) > 0.0001;
-  const hasDehaze = Math.abs(dehaze) > 0.0001;
-  const hasClarity = Math.abs(clarity) > 0.0001;
-  const hasVibrance = Math.abs(vibranceFactor - 1) > 0.0001;
-  const hasSaturation = Math.abs(saturationFactor - 1) > 0.0001;
-  const hasWarmth = Math.abs(warmth) > 0.0001;
-  const filmicToe = clamp(Math.max(0, -blacks) * 0.018 + Math.max(0, dehaze) * 0.006, 0, 0.03);
-  const filmicShoulder = clamp(Math.max(0, -highlights) * 0.08 + Math.max(0, whites) * 0.05, 0, 0.22);
-  const filmicGamma = clamp(1 + Math.max(0, contrast) * 0.05, 1, 1.06);
-  const hasFilmic = !fastMode && (filmicToe > 0 || filmicShoulder > 0);
-  const toneCurveStrength = clamp((adjustments.toneCurve || 0) / 100, 0, 0.35);
-  const hasToneCurve = toneCurveStrength > 0.0001;
-  const needsToneMask = hasShadows || hasHighlights || hasWhites || hasBlacks;
-
-  for (let i = 0; i < data.length; i += 4) {
-    let r = srgbToLinear(data[i] / 255) * exposureGain;
-    let g = srgbToLinear(data[i + 1] / 255) * exposureGain;
-    let b = srgbToLinear(data[i + 2] / 255) * exposureGain;
-
-    r = Math.max(0, r);
-    g = Math.max(0, g);
-    b = Math.max(0, b);
-
-    let luminance = luminanceLinear(r, g, b);
-    if (needsToneMask) {
-      const shadowMask = hasShadows ? 1 - smoothstep(0.08, 0.55, luminance) : 0;
-      const highlightMask = hasHighlights ? smoothstep(0.48, 1.0, luminance) : 0;
-      const whiteMask = hasWhites ? smoothstep(0.68, 1.0, luminance) : 0;
-      const blackMask = hasBlacks ? 1 - smoothstep(0.0, 0.28, luminance) : 0;
-
-      if (hasHighlights) {
-        r = adjustMaskedTone(r, highlightToneAmount, highlightMask);
-        g = adjustMaskedTone(g, highlightToneAmount, highlightMask);
-        b = adjustMaskedTone(b, highlightToneAmount, highlightMask);
-      }
-
-      if (hasShadows) {
-        r = adjustMaskedTone(r, shadowToneAmount, shadowMask);
-        g = adjustMaskedTone(g, shadowToneAmount, shadowMask);
-        b = adjustMaskedTone(b, shadowToneAmount, shadowMask);
-      }
-
-      if (hasWhites) {
-        r = adjustMaskedTone(r, whiteToneAmount, whiteMask);
-        g = adjustMaskedTone(g, whiteToneAmount, whiteMask);
-        b = adjustMaskedTone(b, whiteToneAmount, whiteMask);
-      }
-
-      if (hasBlacks) {
-        r = adjustMaskedTone(r, blackToneAmount, blackMask, 1.08);
-        g = adjustMaskedTone(g, blackToneAmount, blackMask, 1.08);
-        b = adjustMaskedTone(b, blackToneAmount, blackMask, 1.08);
-      }
-    }
-
-    if (hasToneCurve) {
-      // Subtle S-curve after exposure/highlight/shadow shaping.
-      r = applySubtleSCurve(r, toneCurveStrength);
-      g = applySubtleSCurve(g, toneCurveStrength);
-      b = applySubtleSCurve(b, toneCurveStrength);
-    }
-
-    if (hasContrast) {
-      luminance = luminanceLinear(r, g, b);
-      const highlightProtect = smoothstep(0.74, 1.0, luminance);
-      const protectedContrast = 1 + (contrastFactor - 1) * (1 - highlightProtect * 0.35);
-      r = Math.max(0, (r - contrastPivot) * protectedContrast + contrastPivot);
-      g = Math.max(0, (g - contrastPivot) * protectedContrast + contrastPivot);
-      b = Math.max(0, (b - contrastPivot) * protectedContrast + contrastPivot);
-    }
-
-    if (hasDehaze) {
-      if (fastMode) {
-        const dehazeOffset = dehaze * 0.018;
-        const dehazeContrast = 1 + dehaze * 0.1;
-        r = Math.max(0, (r - dehazeOffset - contrastPivot) * dehazeContrast + contrastPivot);
-        g = Math.max(0, (g - dehazeOffset - contrastPivot) * dehazeContrast + contrastPivot);
-        b = Math.max(0, (b - dehazeOffset - contrastPivot) * dehazeContrast + contrastPivot);
-      } else {
-        luminance = luminanceLinear(r, g, b);
-        const maxV = Math.max(r, g, b);
-        const minV = Math.min(r, g, b);
-        const satLocal = maxV > 0 ? (maxV - minV) / maxV : 0;
-        const hazeMask = smoothstep(0.24, 0.96, luminance) * (1 - satLocal * 0.8);
-        const shadowProtection = 1 - smoothstep(0.0, 0.26, luminance);
-        const hazeOffset = dehaze * hazeMask * 0.035 * (1 - shadowProtection * 0.4);
-
-        r = Math.max(0, r - hazeOffset);
-        g = Math.max(0, g - hazeOffset);
-        b = Math.max(0, b - hazeOffset);
-
-        const dehazeContrast = 1 + dehaze * 0.12;
-        r = Math.max(0, (r - contrastPivot) * dehazeContrast + contrastPivot);
-        g = Math.max(0, (g - contrastPivot) * dehazeContrast + contrastPivot);
-        b = Math.max(0, (b - contrastPivot) * dehazeContrast + contrastPivot);
-
-        if (dehaze > 0) {
-          const colorDepthBoost = dehaze * hazeMask * 0.08;
-          luminance = luminanceLinear(r, g, b);
-          r = clamp(luminance + (r - luminance) * (1 + colorDepthBoost), 0, 1);
-          g = clamp(luminance + (g - luminance) * (1 + colorDepthBoost), 0, 1);
-          b = clamp(luminance + (b - luminance) * (1 + colorDepthBoost), 0, 1);
-        }
-      }
-    }
-
-    if (hasClarity) {
-      luminance = luminanceLinear(r, g, b);
-      const midMask = smoothstep(0.12, 0.64, luminance) * (1 - smoothstep(0.62, 0.95, luminance));
-      const lumaContrastScale = 1 + clarity * midMask * 0.26;
-      r = clamp((r - luminance) * lumaContrastScale + luminance, 0, 1);
-      g = clamp((g - luminance) * lumaContrastScale + luminance, 0, 1);
-      b = clamp((b - luminance) * lumaContrastScale + luminance, 0, 1);
-    }
-
-    if (hasFilmic) {
-      luminance = luminanceLinear(r, g, b);
-      if (luminance > 0.0001) {
-        const mappedLum = applyFilmicLuminance(luminance, filmicToe, filmicShoulder, filmicGamma);
-        const scale = mappedLum / luminance;
-        r = clamp(r * scale, 0, 1);
-        g = clamp(g * scale, 0, 1);
-        b = clamp(b * scale, 0, 1);
-      }
-    }
-
-    if (hasVibrance) {
-      [r, g, b] = applyVibranceSaturation(r, g, b, vibranceFactor);
-    }
-    if (hasSaturation) {
-      const gray = luminanceLinear(r, g, b);
-      r = clamp(gray + (r - gray) * saturationFactor, 0, 1);
-      g = clamp(gray + (g - gray) * saturationFactor, 0, 1);
-      b = clamp(gray + (b - gray) * saturationFactor, 0, 1);
-    }
-    if (hasWarmth) {
-      [r, g, b] = applyWarmthNormalized(r, g, b, warmth);
-    }
-
-    data[i] = Math.round(clamp(linearToSrgb(r), 0, 1) * 255);
-    data[i + 1] = Math.round(clamp(linearToSrgb(g), 0, 1) * 255);
-    data[i + 2] = Math.round(clamp(linearToSrgb(b), 0, 1) * 255);
+  if (!previewPipeline?.processImageToDataUrl) {
+    throw new Error('Preview pipeline is unavailable.');
   }
 
-  ctx.putImageData(imageData, 0, 0);
-
-  if (!fastMode && adjustments.denoise > 0) {
-    const passes = Math.max(1, Math.round(adjustments.denoise / 20));
-    for (let i = 0; i < passes; i++) {
-      ctx.filter = `blur(${0.25 + adjustments.denoise / 80}px)`;
-      const temp = document.createElement('canvas');
-      temp.width = canvas.width;
-      temp.height = canvas.height;
-      const tempContext = temp.getContext('2d');
-      tempContext.drawImage(canvas, 0, 0);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(temp, 0, 0);
-      ctx.filter = 'none';
-    }
-  }
-
-  if (!fastMode && adjustments.sharpen > 0) {
-    const strength = adjustments.sharpen / 100;
-    const src = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const out = ctx.createImageData(canvas.width, canvas.height);
-    const s = src.data;
-    const d = out.data;
-    const w = canvas.width;
-    const h = canvas.height;
-    const kernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
-
-    for (let i = 0; i < s.length; i++) d[i] = s[i];
-
-    for (let y = 1; y < h - 1; y++) {
-      for (let x = 1; x < w - 1; x++) {
-        for (let c = 0; c < 3; c++) {
-          let value = 0;
-          let ki = 0;
-
-          for (let ky = -1; ky <= 1; ky++) {
-            for (let kx = -1; kx <= 1; kx++) {
-              value += s[((y + ky) * w + (x + kx)) * 4 + c] * kernel[ki++];
-            }
-          }
-
-          const idx = (y * w + x) * 4 + c;
-          d[idx] = clamp(s[idx] * (1 - strength) + value * strength, 0, 255);
-        }
-
-        d[(y * w + x) * 4 + 3] = s[(y * w + x) * 4 + 3];
-      }
-    }
-
-    ctx.putImageData(out, 0, 0);
-  }
-
-  return canvas.toDataURL('image/jpeg', clamp(jpegQuality, fastMode ? 0.6 : 0.4, 1));
+  return previewPipeline.processImageToDataUrl(image, adjustments, jpegQuality, options);
 }
 
 function analysisStatsForPhoto(photo) {
@@ -2362,21 +1471,30 @@ async function buildPreview(
   } = {}
 ) {
   const img = await getPhotoSourceImage(photo);
-  const adjustments = adjustmentsSnapshot || photo.adjustments;
+  const adjustments = adjustmentsSnapshot || resolveRenderAdjustments(photo.adjustments);
   const quality = jpegQuality == null ? (fastMode ? 0.64 : 0.92) : jpegQuality;
-  const stage = document.querySelector('.image-stage');
-  const stageLongest = stage ? Math.max(stage.clientWidth || 0, stage.clientHeight || 0) : 0;
+  const stages = Array.from(document.querySelectorAll('.image-stage'));
+  const stageLongest = stages.reduce((max, stage) => {
+    return Math.max(max, stage?.clientWidth || 0, stage?.clientHeight || 0);
+  }, 0);
   const dpr = clamp(typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1, 1, 2);
   const zoomFactor = clamp(state.zoom || 1, 1, 2.5);
+  const sourceLongest = Math.max(img.width || 0, img.height || 0);
+  const isCompareMode = state.preview.mode === 'split' || state.preview.mode === 'slider';
   const isHdrSettledPreview = Boolean(photo?.isHdrMerged);
   const settledScale = isHdrSettledPreview
     ? (1.15 + (zoomFactor - 1) * 0.5)
     : (1.32 + (zoomFactor - 1) * 0.65);
-  const settledPreviewMaxDimension = clamp(
+  const settledPreviewBaseMaxDimension = clamp(
     Math.round((stageLongest || 1200) * dpr * settledScale),
     isHdrSettledPreview ? 1100 : 1300,
     isHdrSettledPreview ? 2500 : 3000
   );
+  // In split/slider compare, before side uses full-size source pixels.
+  // Keep settled after-side preview at full source resolution for matched sharpness.
+  const settledPreviewMaxDimension = (!fastMode && isHdrSettledPreview && isCompareMode && sourceLongest > 0)
+    ? sourceLongest
+    : settledPreviewBaseMaxDimension;
 
   return processPreviewToDataUrl(
     img,
@@ -2427,6 +1545,7 @@ async function fitPreviewToStage() {
     state.panY = 0;
 
     renderPreview();
+    queueViewportQualityRefresh({ debounceMs: 120 });
   } catch (error) {
     console.warn('Could not fit preview to stage:', error);
   }
@@ -2450,12 +1569,12 @@ async function refreshSelectedPreview({
   const versionAtStart = expectedVersion == null
     ? (currentPhoto.adjustVersion || 0)
     : expectedVersion;
-  const adjustmentsSnapshot = { ...(currentPhoto.adjustments || defaultAdjustments) };
+  const adjustmentsSnapshot = resolveRenderAdjustments(currentPhoto.adjustments);
   let nextPreviewUrl = null;
   let markedFastInFlight = false;
 
   if (fastMode) {
-    state.previewPerf.fastInFlight = true;
+    state.preview.perf.fastInFlight = true;
     markedFastInFlight = true;
   }
 
@@ -2498,9 +1617,9 @@ async function refreshSelectedPreview({
     console.error(error);
   } finally {
     if (markedFastInFlight) {
-      state.previewPerf.fastInFlight = false;
-      if (state.previewPerf.pendingFast) {
-        state.previewPerf.pendingFast = false;
+      state.preview.perf.fastInFlight = false;
+      if (state.preview.perf.pendingFast) {
+        state.preview.perf.pendingFast = false;
         queueSelectedPreviewRender({
           fastMode: true,
           debounceMs: 0,
@@ -2633,16 +1752,16 @@ function updateAdjustments(updates, { interactive = false, source = 'manual' } =
   const photo = selectedPhoto();
   if (!photo) return;
 
-  if (source !== 'preset' && state.activePreset !== null) {
-    state.activePreset = null;
+  if (source !== 'preset' && state.presets.activePreset !== null) {
+    state.presets.activePreset = null;
     syncPresetButtonState();
   }
-  if (source !== 'preset' && state.selectedPresetOptionId) {
-    state.selectedPresetOptionId = '';
+  if (source !== 'preset' && state.presets.selectedOptionId) {
+    state.presets.selectedOptionId = '';
     syncPresetDropdownOptions();
   }
 
-  if (state.applyToAll) {
+  if (state.preview.applyToAll) {
     for (const item of state.photos) {
       item.adjustments = { ...item.adjustments, ...updates };
       markPhotoAdjustmentsDirty(item);
@@ -2652,12 +1771,12 @@ function updateAdjustments(updates, { interactive = false, source = 'manual' } =
     markPhotoAdjustmentsDirty(photo);
   }
 
-  state.previewPerf.lastInteractionAt = Date.now();
+  state.preview.perf.lastInteractionAt = Date.now();
 
   if (interactive) {
-    if (state.previewPerf.fullTimer) {
-      clearTimeout(state.previewPerf.fullTimer);
-      state.previewPerf.fullTimer = null;
+    if (state.preview.perf.fullTimer) {
+      clearTimeout(state.preview.perf.fullTimer);
+      state.preview.perf.fullTimer = null;
     }
 
     queueSelectedPreviewRender({
@@ -2668,13 +1787,13 @@ function updateAdjustments(updates, { interactive = false, source = 'manual' } =
     return;
   }
 
-  if (state.previewPerf.fastTimer) {
-    clearTimeout(state.previewPerf.fastTimer);
-    state.previewPerf.fastTimer = null;
+  if (state.preview.perf.fastTimer) {
+    clearTimeout(state.preview.perf.fastTimer);
+    state.preview.perf.fastTimer = null;
   }
-  if (state.previewPerf.fullTimer) {
-    clearTimeout(state.previewPerf.fullTimer);
-    state.previewPerf.fullTimer = null;
+  if (state.preview.perf.fullTimer) {
+    clearTimeout(state.preview.perf.fullTimer);
+    state.preview.perf.fullTimer = null;
   }
 
   renderControls();
@@ -2710,8 +1829,8 @@ async function applyPreset(presetName) {
   if (!photo) return;
 
   const targetPhotoId = photo.id;
-  state.activePreset = presetName;
-  state.selectedPresetOptionId = '';
+  state.presets.activePreset = presetName;
+  state.presets.selectedOptionId = '';
   syncPresetDropdownOptions();
   syncPresetButtonState();
 
@@ -2725,6 +1844,10 @@ async function applyPreset(presetName) {
 }
 
 function normalizePresetAdjustmentValue(key, rawValue) {
+  if (editorCore?.normalizePresetAdjustmentValue) {
+    return editorCore.normalizePresetAdjustmentValue(key, rawValue);
+  }
+
   const parsed = Number(rawValue);
   if (!Number.isFinite(parsed)) return defaultAdjustments[key] || 0;
 
@@ -2742,6 +1865,10 @@ function normalizePresetAdjustmentValue(key, rawValue) {
 }
 
 function presetAdjustmentsFromValues(values = {}) {
+  if (editorCore?.presetAdjustmentsFromValues) {
+    return editorCore.presetAdjustmentsFromValues(values);
+  }
+
   const out = {};
   PRESET_ADJUSTMENT_KEYS.forEach((key) => {
     out[key] = normalizePresetAdjustmentValue(key, values[key]);
@@ -2750,6 +1877,10 @@ function presetAdjustmentsFromValues(values = {}) {
 }
 
 function presetStoragePayloadFromAdjustments(name, adjustments = {}) {
+  if (editorCore?.presetStoragePayloadFromAdjustments) {
+    return editorCore.presetStoragePayloadFromAdjustments(name, adjustments);
+  }
+
   const payload = {
     name: String(name || '').trim(),
   };
@@ -2776,7 +1907,7 @@ function dropdownPresetEntries() {
     source: 'builtin',
   }));
 
-  const userPresets = state.userSavedPresets.map((preset) => ({
+  const userPresets = state.presets.userSavedPresets.map((preset) => ({
     id: userPresetOptionId(preset.name),
     name: preset.name,
     adjustments: preset.adjustments,
@@ -2791,15 +1922,15 @@ function syncPresetDropdownOptions() {
 
   const entries = dropdownPresetEntries();
   const hasPhoto = Boolean(selectedPhoto());
-  if (state.selectedPresetOptionId && !entries.some((entry) => entry.id === state.selectedPresetOptionId)) {
-    state.selectedPresetOptionId = '';
+  if (state.presets.selectedOptionId && !entries.some((entry) => entry.id === state.presets.selectedOptionId)) {
+    state.presets.selectedOptionId = '';
   }
 
   if (!entries.length) {
     el.presetDropdownMenu.innerHTML = '<div class="preset-dropdown-empty">No presets available.</div>';
   } else {
     el.presetDropdownMenu.innerHTML = entries.map((entry) => {
-      const isSelected = entry.id === state.selectedPresetOptionId;
+      const isSelected = entry.id === state.presets.selectedOptionId;
       const deleteButton = entry.source === 'user'
         ? `<button type="button" class="preset-dropdown-delete quiet" data-delete-preset="${escapeHtml(encodeURIComponent(entry.name))}">Delete</button>`
         : '';
@@ -2832,9 +1963,9 @@ function applyDropdownPresetById(optionId) {
   const targetPreset = dropdownPresetEntries().find((entry) => entry.id === optionId);
   if (!targetPreset) return;
 
-  state.activePreset = null;
+  state.presets.activePreset = null;
   syncPresetButtonState();
-  state.selectedPresetOptionId = optionId;
+  state.presets.selectedOptionId = optionId;
   updateAdjustments(targetPreset.adjustments, { source: 'preset' });
 }
 
@@ -2943,7 +2074,7 @@ async function deleteUserPresetByName(name) {
       throw new Error(response?.error || 'Could not delete preset.');
     }
 
-    state.userSavedPresets = (response.presets || [])
+    state.presets.userSavedPresets = (response.presets || [])
       .map((preset) => {
         const presetName = String(preset?.name || '').trim();
         if (!presetName || RESERVED_PRESET_NAME_SET.has(presetName.toLowerCase())) return null;
@@ -2955,8 +2086,8 @@ async function deleteUserPresetByName(name) {
       .filter(Boolean);
 
     const deletedId = userPresetOptionId(trimmedName);
-    if (state.selectedPresetOptionId === deletedId) {
-      state.selectedPresetOptionId = '';
+    if (state.presets.selectedOptionId === deletedId) {
+      state.presets.selectedOptionId = '';
     }
     syncPresetDropdownOptions();
   } catch (error) {
@@ -2974,7 +2105,7 @@ async function loadUserSavedPresets() {
       throw new Error(response?.error || 'Could not load cleanup presets.');
     }
 
-    state.userSavedPresets = (response.presets || [])
+    state.presets.userSavedPresets = (response.presets || [])
       .map((preset) => {
         const name = String(preset?.name || '').trim();
         if (!name || RESERVED_PRESET_NAME_SET.has(name.toLowerCase())) return null;
@@ -2986,7 +2117,7 @@ async function loadUserSavedPresets() {
       .filter(Boolean);
   } catch (error) {
     console.warn('Cleanup preset load failed:', error);
-    state.userSavedPresets = [];
+    state.presets.userSavedPresets = [];
   }
 
   syncPresetDropdownOptions();
@@ -3048,7 +2179,7 @@ async function savePresetFromModal() {
       throw new Error(response?.error || 'Could not save preset.');
     }
 
-    state.userSavedPresets = (response.presets || [])
+    state.presets.userSavedPresets = (response.presets || [])
       .map((preset) => {
         const presetName = String(preset?.name || '').trim();
         if (!presetName || RESERVED_PRESET_NAME_SET.has(presetName.toLowerCase())) return null;
@@ -3059,10 +2190,10 @@ async function savePresetFromModal() {
       })
       .filter(Boolean);
 
-    const savedName = state.userSavedPresets.find(
+    const savedName = state.presets.userSavedPresets.find(
       (preset) => preset.name.toLowerCase() === payload.name.toLowerCase()
     )?.name || payload.name;
-    state.selectedPresetOptionId = userPresetOptionId(savedName);
+    state.presets.selectedOptionId = userPresetOptionId(savedName);
     closeSavePresetModal();
     syncPresetDropdownOptions();
   } catch (error) {
@@ -3193,14 +2324,14 @@ function renderPhotoList() {
   el.photoList.querySelectorAll('.photo-item').forEach((item) => {
     item.addEventListener('click', async (event) => {
       if (event.target.closest('[data-remove]')) return;
-      state.libraryInteractionActive = true;
+      state.library.interactionActive = true;
       const { selectionChanged, primaryChanged } = applyLibrarySelection(item.dataset.id, event);
       if (!selectionChanged && !primaryChanged) return;
       focusLibraryItem(item);
 
       if (primaryChanged) {
         clearPreviewTimers();
-        state.activePreset = null;
+        state.presets.activePreset = null;
         resetView();
         render();
         await refreshSelectedPreview({ autoFit: true });
@@ -3213,13 +2344,13 @@ function renderPhotoList() {
     item.addEventListener('keydown', async (event) => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
-      state.libraryInteractionActive = true;
+      state.library.interactionActive = true;
       const { selectionChanged, primaryChanged } = applyLibrarySelection(item.dataset.id, {});
       if (!selectionChanged && !primaryChanged) return;
       focusLibraryItem(item);
 
       clearPreviewTimers();
-      state.activePreset = null;
+      state.presets.activePreset = null;
       resetView();
       render();
       await refreshSelectedPreview({ autoFit: true });
@@ -3240,14 +2371,14 @@ function renderPhotoList() {
       }
 
       if (removedPhoto?.isHdrMerged) {
-        state.loadedMergedPaths.delete(removedPhoto.filePath);
+        state.library.loadedMergedPaths.delete(removedPhoto.filePath);
       }
 
       if (state.selectedId === id) {
         clearPreviewTimers();
         const fallbackSelected = state.photos.find((photo) => state.selectedPhotoIds.has(photo.id));
         state.selectedId = fallbackSelected?.id || state.photos[0]?.id || null;
-        state.activePreset = null;
+        state.presets.activePreset = null;
       }
       normalizeLibrarySelectionState();
 
@@ -3269,7 +2400,7 @@ async function handleLibrarySelectAllShortcut(event) {
   const target = event.target;
   const targetWithinLibrary = Boolean(target?.closest?.('#photoList'));
   const focusWithinLibrary = Boolean(activeElement?.closest?.('#photoList'));
-  const libraryContextActive = targetWithinLibrary || focusWithinLibrary || state.libraryInteractionActive;
+  const libraryContextActive = targetWithinLibrary || focusWithinLibrary || state.library.interactionActive;
 
   if (!libraryContextActive) return;
 
@@ -3290,7 +2421,7 @@ async function handleLibrarySelectAllShortcut(event) {
 
   if (primaryChanged) {
     clearPreviewTimers();
-    state.activePreset = null;
+    state.presets.activePreset = null;
     resetView();
   }
 
@@ -3314,20 +2445,49 @@ function clearLibraryFlow() {
   state.selectedId = null;
   state.selectedPhotoIds = new Set();
   state.selectionAnchorId = null;
-  state.libraryInteractionActive = false;
-  state.activePreset = null;
-  state.selectedPresetOptionId = '';
-  state.applyToAll = false;
-  state.loadedMergedPaths.clear();
+  state.library.interactionActive = false;
+  state.presets.activePreset = null;
+  state.presets.selectedOptionId = '';
+  state.preview.applyToAll = false;
+  state.library.loadedMergedPaths.clear();
   closePresetDropdown();
   closeSavePresetModal();
   resetView();
   render();
 }
 
+function compareRenderStateForPhoto(photo) {
+  if (editorCore?.buildCompareRenderState) {
+    return editorCore.buildCompareRenderState({
+      photo,
+      processedUrl: photoPreviewUrl(photo),
+      sliderPosition: state.preview.sliderPosition,
+    });
+  }
+
+  const reveal = clamp(Number(state.preview.sliderPosition) || 50, 0, 100);
+  return {
+    split: {
+      originalLabel: photo.isHdrMerged ? 'Merged 16-bit TIFF Master' : 'Original',
+      cleanedLabel: photo.isHdrMerged ? 'Current Edit Preview' : 'Cleaned Preview',
+      originalSrc: photo.originalUrl,
+      cleanedSrc: photoPreviewUrl(photo),
+    },
+    slider: {
+      label: photo.isHdrMerged
+        ? 'Merged 16-bit TIFF Master / Current Edit Preview'
+        : 'Before / After Slider',
+      reveal,
+      originalSrc: photo.originalUrl,
+      cleanedSrc: photoPreviewUrl(photo),
+    },
+  };
+}
+
 function renderSplitPreview(photo, transform) {
-  const originalLabel = photo.isHdrMerged ? 'Merged 16-bit TIFF Master' : 'Original';
-  const cleanedLabel = photo.isHdrMerged ? 'Current Edit Preview' : 'Cleaned Preview';
+  const compareState = compareRenderStateForPhoto(photo);
+  const originalLabel = compareState.split.originalLabel;
+  const cleanedLabel = compareState.split.cleanedLabel;
   const sizeStyle = previewImageSizeStyle(photo);
 
   return `
@@ -3336,7 +2496,7 @@ function renderSplitPreview(photo, transform) {
         <div class="image-label">${escapeHtml(originalLabel)}</div>
         <div class="image-wrap">
           <div class="image-stage">
-            <img class="preview-image" style="transform:${transform};${sizeStyle}" src="${escapeHtml(photo.originalUrl)}" alt="Original" />
+            <img class="preview-image" style="transform:${transform};${sizeStyle}" src="${escapeHtml(compareState.split.originalSrc)}" alt="Original" />
           </div>
         </div>
       </div>
@@ -3344,7 +2504,7 @@ function renderSplitPreview(photo, transform) {
         <div class="image-label">${escapeHtml(cleanedLabel)}</div>
         <div class="image-wrap">
           <div class="image-stage">
-            <img class="preview-image" style="transform:${transform};${sizeStyle}" src="${escapeHtml(photoPreviewUrl(photo))}" alt="Cleaned" />
+            <img class="preview-image" style="transform:${transform};${sizeStyle}" src="${escapeHtml(compareState.split.cleanedSrc)}" alt="Cleaned" />
           </div>
         </div>
       </div>
@@ -3353,10 +2513,9 @@ function renderSplitPreview(photo, transform) {
 }
 
 function renderSliderPreview(photo, transform) {
-  const label = photo.isHdrMerged
-    ? 'Merged 16-bit TIFF Master / Current Edit Preview'
-    : 'Before / After Slider';
-  const reveal = clamp(Number(state.sliderPosition) || 50, 0, 100);
+  const compareState = compareRenderStateForPhoto(photo);
+  const label = compareState.slider.label;
+  const reveal = compareState.slider.reveal;
   const clipInset = `${100 - reveal}%`;
   const sizeStyle = previewImageSizeStyle(photo);
 
@@ -3367,9 +2526,9 @@ function renderSliderPreview(photo, transform) {
           <div class="image-stage compare-stage">
           <div class="compare-corner-label compare-corner-label-before">Before</div>
           <div class="compare-corner-label compare-corner-label-after">After</div>
-          <img class="compare-cleaned-image" style="transform:${transform};${sizeStyle}" src="${escapeHtml(photoPreviewUrl(photo))}" alt="Cleaned" />
+          <img class="compare-cleaned-image" style="transform:${transform};${sizeStyle}" src="${escapeHtml(compareState.slider.cleanedSrc)}" alt="Cleaned" />
           <div class="compare-original-overlay" style="clip-path:inset(0 ${clipInset} 0 0);">
-            <img class="compare-original-image" style="transform:${transform};${sizeStyle}" src="${escapeHtml(photo.originalUrl)}" alt="Original" />
+            <img class="compare-original-image" style="transform:${transform};${sizeStyle}" src="${escapeHtml(compareState.slider.originalSrc)}" alt="Original" />
           </div>
 
           <div class="compare-handle" style="left:${reveal}%;">
@@ -3430,6 +2589,8 @@ function attachPreviewInteractions() {
       }
 
       updateTransforms();
+      state.preview.perf.lastInteractionAt = Date.now();
+      queueViewportQualityRefresh({ debounceMs: 180 });
     };
 
     stage.onmousedown = startPan;
@@ -3442,13 +2603,13 @@ function attachPreviewInteractions() {
     let sliderRaf = null;
 
     compareSlider.oninput = (event) => {
-      state.sliderPosition = clamp(Number(event.target.value), 0, 100);
+      state.preview.sliderPosition = clamp(Number(event.target.value), 0, 100);
       if (sliderRaf) return;
 
       sliderRaf = window.requestAnimationFrame(() => {
-        const clipInset = `${100 - state.sliderPosition}%`;
+        const clipInset = `${100 - state.preview.sliderPosition}%`;
         if (overlay) overlay.style.clipPath = `inset(0 ${clipInset} 0 0)`;
-        if (handle) handle.style.left = `${state.sliderPosition}%`;
+        if (handle) handle.style.left = `${state.preview.sliderPosition}%`;
         sliderRaf = null;
       });
     };
@@ -3492,7 +2653,7 @@ function renderPreview() {
   }
 
   const transform = makePreviewTransform();
-  const previewBody = state.previewMode === 'slider'
+  const previewBody = state.preview.mode === 'slider'
     ? renderSliderPreview(photo, transform)
     : renderSplitPreview(photo, transform);
   const mergedFileName = pathBasename(photo.filePath || '');
@@ -3684,13 +2845,13 @@ function syncPresetButtonState() {
     [el.presetSoftBtn, 'soft'],
   ].forEach(([button, preset]) => {
     if (!button) return;
-    button.classList.toggle('is-active', hasPhoto && state.activePreset === preset);
+    button.classList.toggle('is-active', hasPhoto && state.presets.activePreset === preset);
   });
 }
 
 function syncPreviewModeButtonLabel() {
   if (!el.previewModeBtn) return;
-  el.previewModeBtn.textContent = state.previewMode === 'split' ? 'Slider View' : 'Split View';
+  el.previewModeBtn.textContent = state.preview.mode === 'split' ? 'Slider View' : 'Split View';
 }
 
 function syncLeftPanelLayoutState() {
@@ -3842,7 +3003,7 @@ function renderHistogramPanel() {
 }
 
 function render() {
-  el.applyAllToggle.classList.toggle('on', state.applyToAll);
+  el.applyAllToggle.classList.toggle('on', state.preview.applyToAll);
   syncPreviewModeButtonLabel();
 
   renderPhotoList();
@@ -3882,7 +3043,7 @@ function render() {
   });
 
   if (!hasPhotos) {
-    state.activePreset = null;
+    state.presets.activePreset = null;
   }
   syncPresetButtonState();
   syncPresetDropdownOptions();
@@ -3951,15 +3112,15 @@ function render() {
 }
 
 function togglePreviewMode() {
-  const nextMode = state.previewMode === 'slider' ? 'split' : 'slider';
+  const nextMode = state.preview.mode === 'slider' ? 'split' : 'slider';
 
   if (nextMode === 'slider') {
-    if (!Number.isFinite(state.sliderPosition) || state.sliderPosition < 5 || state.sliderPosition > 95) {
-      state.sliderPosition = 50;
+    if (!Number.isFinite(state.preview.sliderPosition) || state.preview.sliderPosition < 5 || state.preview.sliderPosition > 95) {
+      state.preview.sliderPosition = 50;
     }
   }
 
-  state.previewMode = nextMode;
+  state.preview.mode = nextMode;
   syncPreviewModeButtonLabel();
   setTimeout(() => fitPreviewToStage(), 0);
 }
@@ -4081,7 +3242,7 @@ async function openHdrOutputFolderFlow() {
 async function loadMergedResultsIntoLibrary(mergedResults) {
   const toLoad = (mergedResults || [])
     .filter((result) => result?.mergedPath)
-    .filter((result) => !state.loadedMergedPaths.has(result.mergedPath));
+    .filter((result) => !state.library.loadedMergedPaths.has(result.mergedPath));
 
   if (!toLoad.length) return;
 
@@ -4111,7 +3272,7 @@ async function loadMergedResultsIntoLibrary(mergedResults) {
   });
 
   for (const result of toLoad) {
-    state.loadedMergedPaths.add(result.mergedPath);
+    state.library.loadedMergedPaths.add(result.mergedPath);
   }
 }
 
@@ -4300,7 +3461,11 @@ async function exportCurrent() {
 
   try {
     const image = await getPhotoSourceImage(photo);
-    const dataUrl = processImageToDataUrl(image, photo.adjustments, Number(el.hdrExportQuality?.value || 92) / 100);
+    const dataUrl = processImageToDataUrl(
+      image,
+      resolveRenderAdjustments(photo.adjustments),
+      Number(el.hdrExportQuality?.value || 92) / 100
+    );
 
     const outPath = await window.aceApi.pickSaveFile(makeOutputName(photo.filePath));
     if (!outPath) return;
@@ -4320,7 +3485,7 @@ async function exportPhotosWithSettings(photos, { suffix, quality, useHdrStrictN
     const photo = photos[i];
 
     const image = await getPhotoSourceImage(photo);
-    const dataUrl = processImageToDataUrl(image, photo.adjustments, quality / 100);
+    const dataUrl = processImageToDataUrl(image, resolveRenderAdjustments(photo.adjustments), quality / 100);
 
     items.push({
       originalPath: photo.filePath,
@@ -4656,6 +3821,8 @@ el.zoomInBtn?.addEventListener('click', () => {
   const minZoom = state.fitZoom || 0.03;
   state.zoom = clamp(state.zoom + 0.25, minZoom, 8);
   renderPreview();
+  state.preview.perf.lastInteractionAt = Date.now();
+  queueViewportQualityRefresh({ debounceMs: 120 });
 });
 
 el.zoomOutBtn?.addEventListener('click', () => {
@@ -4669,6 +3836,8 @@ el.zoomOutBtn?.addEventListener('click', () => {
   }
 
   renderPreview();
+  state.preview.perf.lastInteractionAt = Date.now();
+  queueViewportQualityRefresh({ debounceMs: 120 });
 });
 
 el.zoomFitBtn?.addEventListener('click', () => {
@@ -4708,7 +3877,7 @@ el.resetBtn?.addEventListener('click', () => {
   const photo = selectedPhoto();
   if (!photo) return;
 
-  state.activePreset = null;
+  state.presets.activePreset = null;
   syncPresetButtonState();
   updateAdjustments({ ...defaultAdjustments });
 });
@@ -4728,7 +3897,7 @@ el.copyToAllBtn?.addEventListener('click', async () => {
 });
 
 el.applyAllToggle?.addEventListener('click', () => {
-  state.applyToAll = !state.applyToAll;
+  state.preview.applyToAll = !state.preview.applyToAll;
   render();
 });
 
@@ -4802,14 +3971,14 @@ window.addEventListener('scroll', () => {
 }, true);
 
 document.addEventListener('mousedown', (event) => {
-  state.libraryInteractionActive = Boolean(event.target?.closest?.('#libraryLeftSection'));
+  state.library.interactionActive = Boolean(event.target?.closest?.('#libraryLeftSection'));
   if (!event.target?.closest?.('.preset-manager-row')) {
     closePresetDropdown();
   }
 }, true);
 
 document.addEventListener('focusin', (event) => {
-  state.libraryInteractionActive = Boolean(event.target?.closest?.('#libraryLeftSection'));
+  state.library.interactionActive = Boolean(event.target?.closest?.('#libraryLeftSection'));
 }, true);
 
 document.addEventListener('keydown', (event) => {

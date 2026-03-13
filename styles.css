@@ -313,13 +313,13 @@ body {
 .window {
   height: calc(100vh - 32px);
   border: 1px solid var(--border);
-  border-radius: 28px;
+  border-radius: 24px;
   background: rgba(8, 12, 18, 0.88);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   box-shadow:
-    0 22px 80px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    0 18px 64px rgba(0, 0, 0, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.02);
   display: grid;
   grid-template-rows: 36px auto 1fr;
   overflow: hidden;
@@ -368,7 +368,7 @@ body {
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 10px;
-  padding: 12px 18px 10px;
+  padding: 11px 16px 9px;
   border-bottom: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0));
   -webkit-app-region: no-drag;
@@ -430,34 +430,66 @@ body {
 .actions-main {
   justify-content: flex-start;
   min-width: 0;
-  flex-wrap: wrap;
-  row-gap: 5px;
+  flex-wrap: nowrap;
 }
 
 .actions-export {
   justify-content: flex-end;
   min-width: 0;
-  flex-wrap: wrap;
-  row-gap: 5px;
-  column-gap: 6px;
+  flex-wrap: nowrap;
   align-content: center;
   max-width: 100%;
 }
 
 .actions button {
-  padding: 9px 11px;
+  padding: 8px 10px;
   border-radius: 11px;
   white-space: nowrap;
   flex: 0 1 auto;
   min-width: 0;
 }
 
+.topbar-action-group {
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.022), rgba(255, 255, 255, 0.009));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.topbar-action-group > button {
+  min-height: 32px;
+  padding: 7px 9px;
+  border-radius: 9px;
+}
+
+.topbar-action-group-import {
+  justify-content: flex-start;
+}
+
+.topbar-action-group-import #addFolderBtn,
+.topbar-action-group-import #addHdrFolderBtn {
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #d2def5;
+}
+
+.topbar-action-group-export {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
 .quality-inline {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 10px;
-  border-radius: 12px;
+  padding: 6px 9px;
+  border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.04);
   color: var(--muted);
@@ -466,6 +498,19 @@ body {
   min-width: 164px;
   max-width: 230px;
   flex: 1 1 180px;
+}
+
+.topbar-action-group-export .quality-inline {
+  min-width: 146px;
+  max-width: 176px;
+  flex: 0 1 162px;
+  margin-left: 1px;
+  padding: 6px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 9px;
+  border-color: rgba(158, 183, 236, 0.2);
+  background: rgba(89, 116, 168, 0.1);
 }
 
 .quality-inline span:first-child {
@@ -494,11 +539,11 @@ input[type="number"] {
   border: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
   color: var(--text);
-  border-radius: 14px;
-  padding: 11px 15px;
+  border-radius: 12px;
+  padding: 10px 13px;
   font-size: 13px;
   font-weight: 650;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 button {
@@ -543,16 +588,16 @@ input[type="number"] {
 .panel {
   min-height: 0;
   border: 1px solid var(--border);
-  border-radius: 22px;
-  background: linear-gradient(180deg, rgba(22, 27, 36, 0.98), rgba(14, 18, 26, 0.96));
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(20, 25, 34, 0.98), rgba(14, 18, 26, 0.95));
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 .panel-head {
-  padding: 14px 15px 10px;
+  padding: 12px 13px 9px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -563,13 +608,13 @@ input[type="number"] {
 }
 
 .panel-head p {
-  margin: 5px 0 0;
+  margin: 4px 0 0;
   font-size: 12px;
   color: var(--muted);
 }
 
 .panel-body {
-  padding: 13px 15px 15px;
+  padding: 12px 13px 13px;
   min-height: 0;
 }
 
@@ -609,9 +654,9 @@ input[type="number"] {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.016);
   overflow: hidden;
 }
 
@@ -668,8 +713,8 @@ input[type="number"] {
   text-align: left;
   border: 0;
   border-radius: 0;
-  padding: 10px 11px;
-  background: rgba(255, 255, 255, 0.03);
+  padding: 9px 10px;
+  background: rgba(255, 255, 255, 0.024);
   min-height: 44px;
 }
 
@@ -708,7 +753,7 @@ input[type="number"] {
 
 .left-stack-content {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 10px 11px;
+  padding: 9px 10px;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -740,7 +785,7 @@ input[type="number"] {
 .library-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   min-height: 0;
   height: 100%;
 }
@@ -794,7 +839,7 @@ input[type="number"] {
   overflow: visible;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   padding-right: 2px;
   -webkit-user-select: none;
   user-select: none;
@@ -802,14 +847,14 @@ input[type="number"] {
 
 .photo-item {
   width: 100%;
-  border: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015));
   color: var(--text);
-  border-radius: 14px;
-  padding: 10px 10px 9px;
+  border-radius: 12px;
+  padding: 9px 9px 8px;
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr) auto;
-  gap: 11px;
+  gap: 10px;
   align-items: center;
   text-align: left;
   cursor: pointer;
@@ -836,7 +881,7 @@ input[type="number"] {
 .thumb {
   width: 64px;
   height: 64px;
-  border-radius: 12px;
+  border-radius: 10px;
   object-fit: cover;
   object-position: center;
   background: #000;
@@ -933,15 +978,15 @@ input[type="number"] {
 .toolbar-group {
   display: flex;
   gap: 6px;
-  padding: 4px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.02);
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.016);
 }
 
 .toolbar-group button {
-  padding: 8px 12px;
-  border-radius: 10px;
+  padding: 7px 10px;
+  border-radius: 9px;
   min-height: 34px;
 }
 
@@ -1104,7 +1149,7 @@ input[type="number"] {
 .image-wrap {
   min-height: 0;
   flex: 1;
-  border-radius: 18px;
+  border-radius: 14px;
   border: 1px solid var(--border);
   background: radial-gradient(circle at 50% 18%, rgba(41, 56, 86, 0.22), #05070b 56%, #010204 100%);
   overflow: hidden;
@@ -1195,9 +1240,9 @@ input[type="number"] {
 
 .controls-section {
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 13px;
   background: rgba(255, 255, 255, 0.025);
-  padding: 14px;
+  padding: 12px;
 }
 
 .controls-panel .panel-head h2 {
@@ -1220,8 +1265,8 @@ input[type="number"] {
 }
 
 .cleanup-section {
-  border-radius: 12px;
-  padding: 8px 9px 8px;
+  border-radius: 10px;
+  padding: 7px 8px 7px;
 }
 
 .controls-section-head {
@@ -1259,10 +1304,10 @@ input[type="number"] {
 .histogram-card {
   margin: 3px 0 9px;
   padding: 7px 8px 8px;
-  border-radius: 10px;
-  border: 1px solid rgba(174, 199, 248, 0.22);
-  background: linear-gradient(180deg, rgba(80, 107, 158, 0.12), rgba(255, 255, 255, 0.018));
-  box-shadow: inset 0 0 0 1px rgba(150, 177, 232, 0.08);
+  border-radius: 9px;
+  border: 1px solid rgba(166, 191, 238, 0.16);
+  background: linear-gradient(180deg, rgba(71, 97, 146, 0.08), rgba(255, 255, 255, 0.014));
+  box-shadow: inset 0 1px 0 rgba(143, 168, 224, 0.05);
 }
 
 .histogram-title {
@@ -1320,7 +1365,7 @@ input[type="number"] {
   align-items: center;
   gap: 8px;
   padding: 7px 8px;
-  border-radius: 10px;
+  border-radius: 9px;
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.02);
 }
@@ -1533,7 +1578,7 @@ input[type="range"] {
   width: 240px;
   max-height: 220px;
   overflow: auto;
-  border-radius: 12px;
+  border-radius: 10px;
   border: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(24, 31, 42, 0.98), rgba(14, 20, 30, 0.98));
   box-shadow: 0 14px 26px rgba(0, 0, 0, 0.35);
@@ -1616,8 +1661,13 @@ input[type="range"] {
 }
 
 .hdr-workflow {
-  background: linear-gradient(180deg, rgba(124, 157, 226, 0.12), rgba(20, 26, 36, 0.88));
-  border-color: rgba(155, 184, 255, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px 10px 9px;
+  background: linear-gradient(180deg, rgba(93, 123, 183, 0.07), rgba(17, 23, 34, 0.88));
+  border-color: rgba(134, 162, 217, 0.18);
+  box-shadow: inset 0 1px 0 rgba(165, 193, 241, 0.03);
 }
 
 .hdr-export {
@@ -1640,29 +1690,42 @@ input[type="range"] {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 1px;
+}
+
+.hdr-top-area {
+  display: grid;
+  gap: 7px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(150, 176, 224, 0.14);
+}
+
+.hdr-status-area {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .hdr-action-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 7px;
+  margin-bottom: 0;
 }
 
 .hdr-action-row-secondary {
-  margin-bottom: 10px;
+  margin-bottom: 0;
 }
 
 .hdr-action-row button {
-  min-height: 34px;
+  min-height: 32px;
   font-size: 10px;
-  padding: 7px 10px;
+  padding: 6px 9px;
   border-radius: 10px;
 }
 
 .hdr-primary-action {
-  min-height: 36px;
+  min-height: 35px;
   font-size: 11px;
   font-weight: 700;
 }
@@ -1678,23 +1741,23 @@ button.quiet {
 }
 
 button.open-output {
-  border-color: rgba(170, 194, 255, 0.35);
-  color: #e8efff;
+  border-color: rgba(162, 186, 243, 0.28);
+  color: #dce8ff;
 }
 
 button.retry {
-  min-width: 112px;
+  min-width: 102px;
 }
 
 .hdr-action-hint {
-  margin-bottom: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 8px 9px;
+  margin-bottom: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 1px 1px 0;
   font-size: 9px;
   color: var(--muted);
-  line-height: 1.35;
-  background: rgba(255, 255, 255, 0.02);
+  line-height: 1.32;
+  background: transparent;
 }
 
 .hdr-workflow-head h3,
@@ -1708,7 +1771,7 @@ button.retry {
 .hdr-workflow-head p,
 .hdr-export-head p {
   margin: 2px 0 0;
-  font-size: 9px;
+  font-size: 8px;
   line-height: 1.3;
   color: var(--muted);
 }
@@ -1729,23 +1792,23 @@ button.retry {
 .hdr-select-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 7px;
 }
 
 .hdr-select-grid label,
 .hdr-export-controls label {
   display: grid;
   gap: 4px;
-  font-size: 9px;
+  font-size: 8px;
   letter-spacing: 0.01em;
   color: var(--muted);
 }
 
 .left-panel .hdr-select-grid select {
   font-size: 10px;
-  padding: 7px 9px;
+  padding: 6px 8px;
   border-radius: 10px;
-  min-height: 30px;
+  min-height: 28px;
 }
 
 .hdr-summary {
@@ -1806,11 +1869,11 @@ button.retry {
 }
 
 .hdr-status-shell {
-  margin-top: 10px;
-  border: 1px solid rgba(151, 178, 232, 0.24);
-  border-radius: 12px;
-  padding: 8px;
-  background: linear-gradient(180deg, rgba(96, 124, 178, 0.1), rgba(17, 22, 31, 0.62));
+  margin-top: 0;
+  border: 1px solid rgba(141, 166, 217, 0.16);
+  border-radius: 10px;
+  padding: 8px 8px 7px;
+  background: linear-gradient(180deg, rgba(68, 92, 137, 0.06), rgba(15, 21, 30, 0.58));
 }
 
 .hdr-status-shell .progress-wrap {
@@ -1847,40 +1910,41 @@ button.retry {
 }
 
 .hdr-progress-meta {
-  margin-top: 8px;
+  margin-top: 7px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 10px;
+  font-weight: 650;
   color: var(--muted);
 }
 
 .hdr-status-compact {
-  margin-top: 9px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  padding: 8px 10px;
-  font-size: 10px;
+  margin-top: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 9px;
+  padding: 7px 9px;
+  font-size: 9px;
   line-height: 1.4;
   color: var(--muted);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.015);
 }
 
 .hdr-details-toggle {
   width: 100%;
-  margin-top: 8px;
-  padding: 8px 10px;
-  border-radius: 10px;
+  margin-top: 7px;
+  padding: 7px 9px;
+  border-radius: 9px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 650;
   letter-spacing: 0.02em;
   color: #dbe6fb;
-  border-color: rgba(161, 186, 245, 0.36);
-  background: rgba(96, 122, 178, 0.11);
+  border-color: rgba(151, 176, 232, 0.27);
+  background: rgba(77, 102, 151, 0.09);
 }
 
 .hdr-details-chevron {
@@ -1899,6 +1963,8 @@ button.retry {
 
 .hdr-details-content {
   margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(134, 161, 214, 0.12);
 }
 
 .hdr-details-content.is-collapsed {
@@ -1906,12 +1972,12 @@ button.retry {
 }
 
 .hdr-list-wrap {
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .hdr-list-wrap + .hdr-list-wrap {
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .hdr-list-title {
@@ -1927,23 +1993,23 @@ button.retry {
 .hdr-error-list {
   max-height: 150px;
   overflow: auto;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.18);
-  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  background: rgba(8, 12, 18, 0.18);
+  padding: 7px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .hdr-set-row,
 .hdr-error-row {
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
-  padding: 8px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 9px;
+  padding: 7px 8px;
   font-size: 10px;
-  line-height: 1.4;
-  background: rgba(255, 255, 255, 0.02);
+  line-height: 1.35;
+  background: rgba(255, 255, 255, 0.018);
   display: grid;
   gap: 3px;
 }
@@ -2165,6 +2231,12 @@ button.retry {
     max-width: 200px;
     flex-basis: 168px;
   }
+
+  .topbar-action-group-export .quality-inline {
+    min-width: 138px;
+    max-width: 168px;
+    flex-basis: 154px;
+  }
 }
 
 @media (max-width: 1340px) {
@@ -2198,6 +2270,12 @@ button.retry {
     min-width: 150px;
     max-width: 198px;
     flex-basis: 164px;
+  }
+
+  .topbar-action-group-export .quality-inline {
+    min-width: 132px;
+    max-width: 162px;
+    flex-basis: 148px;
   }
 
   .controls-panel {
@@ -2245,6 +2323,12 @@ button.retry {
     flex-wrap: wrap;
   }
 
+  .topbar-action-group {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
   .brand-logo {
     width: 56px;
     height: 56px;
@@ -2259,6 +2343,11 @@ button.retry {
   .quality-inline {
     width: min(360px, 100%);
     min-width: 0;
+    max-width: 360px;
+  }
+
+  .topbar-action-group-export .quality-inline {
+    flex: 1 1 220px;
     max-width: 360px;
   }
 
@@ -2311,6 +2400,18 @@ button.retry {
   .actions-main,
   .actions-export {
     display: grid;
+    width: 100%;
+  }
+
+  .topbar-action-group {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+    gap: 5px;
+  }
+
+  .topbar-action-group > button,
+  .topbar-action-group .quality-inline {
     width: 100%;
   }
 
