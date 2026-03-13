@@ -5,6 +5,8 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { uniquePaths, getHelperBinaryCandidates, getHelperRootCandidates } = require('./helper-paths');
+const { registerPresetsIpc } = require('./presets-ipc');
+const { registerExportsIpc } = require('./exports-ipc');
 
 const {
   RawService,
@@ -36,31 +38,6 @@ const QUEUE_MAX_CONCURRENCY = Math.max(
   1,
   Math.min(4, Number(process.env.ACE_HDR_MAX_CONCURRENCY) || 2)
 );
-const CLEANUP_PRESET_FIELDS = [
-  'exposure',
-  'contrast',
-  'highlights',
-  'shadows',
-  'whites',
-  'blacks',
-  'toneCurve',
-  'clarity',
-  'dehaze',
-  'vibrance',
-  'saturation',
-  'warmth',
-  'sharpen',
-  'denoise',
-];
-const LOCKED_BUILTIN_PRESET_NAMES = ['Studio Neutral', 'Interior Bright', 'Crisp Pop', 'Gentle Lift'];
-const LEGACY_CONFLICTING_PRESET_NAMES = ['Natural', 'Real Estate', 'Punchy', 'Soft'];
-const LOCKED_BUILTIN_PRESET_NAME_SET = new Set(
-  LOCKED_BUILTIN_PRESET_NAMES.map((name) => name.toLowerCase())
-);
-const RESERVED_PRESET_NAME_SET = new Set([
-  ...LOCKED_BUILTIN_PRESET_NAMES.map((name) => name.toLowerCase()),
-  ...LEGACY_CONFLICTING_PRESET_NAMES.map((name) => name.toLowerCase()),
-]);
 
 fs.mkdirSync(APP_CACHE_ROOT, { recursive: true });
 
@@ -71,66 +48,6 @@ function nowIso() {
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
   return dirPath;
-}
-
-function getCleanupPresetsPath() {
-  return path.join(app.getPath('userData'), 'presets.json');
-}
-
-function normalizeCleanupPresetEntry(entry) {
-  const name = String(entry?.name || '').trim();
-  if (!name) return null;
-
-  const normalized = { name: name.slice(0, 64) };
-  for (const field of CLEANUP_PRESET_FIELDS) {
-    const parsed = Number(entry?.[field]);
-    const value = Number.isFinite(parsed) ? parsed : 0;
-    if (field === 'exposure') {
-      normalized[field] = Number(value.toFixed(2));
-    } else if (field === 'toneCurve') {
-      normalized[field] = Math.max(0, Math.min(100, Math.round(value)));
-    } else {
-      normalized[field] = Math.round(value);
-    }
-  }
-
-  return normalized;
-}
-
-function isLockedBuiltinPresetName(name) {
-  return LOCKED_BUILTIN_PRESET_NAME_SET.has(String(name || '').trim().toLowerCase());
-}
-
-function isReservedCleanupPresetName(name) {
-  return RESERVED_PRESET_NAME_SET.has(String(name || '').trim().toLowerCase());
-}
-
-function readCleanupPresets() {
-  const presetsPath = getCleanupPresetsPath();
-  if (!fs.existsSync(presetsPath)) return [];
-
-  let parsed = [];
-  try {
-    parsed = JSON.parse(fs.readFileSync(presetsPath, 'utf8'));
-  } catch {
-    return [];
-  }
-
-  if (!Array.isArray(parsed)) return [];
-  return parsed
-    .map((entry) => normalizeCleanupPresetEntry(entry))
-    .filter((entry) => entry && !isReservedCleanupPresetName(entry.name))
-    .filter(Boolean);
-}
-
-function writeCleanupPresets(presets) {
-  const presetsPath = getCleanupPresetsPath();
-  ensureDir(path.dirname(presetsPath));
-  const safePresets = Array.isArray(presets)
-    ? presets.map((entry) => normalizeCleanupPresetEntry(entry)).filter(Boolean)
-    : [];
-  fs.writeFileSync(presetsPath, JSON.stringify(safePresets, null, 2), 'utf8');
-  return safePresets;
 }
 
 function logToConsole(scope, message) {
@@ -1510,45 +1427,6 @@ ipcMain.handle('pick-output-folder', async () => {
   return result.filePaths[0] || null;
 });
 
-ipcMain.handle('pick-save-file', async (_, payload = {}) => {
-  const result = await dialog.showSaveDialog({
-    defaultPath: payload.defaultName || 'image-cleaned.jpg',
-    filters: [{ name: 'JPEG Image', extensions: ['jpg', 'jpeg'] }],
-  });
-
-  if (result.canceled) return null;
-  return result.filePath || null;
-});
-
-ipcMain.handle('save-data-url', async (_, payload = {}) => {
-  const { outPath, dataUrl } = payload;
-
-  if (!outPath || !dataUrl) {
-    throw new Error('save-data-url requires outPath and dataUrl.');
-  }
-
-  const base64 = String(dataUrl).replace(/^data:image\/\w+;base64,/, '');
-  const resolvedOutPath = path.resolve(outPath);
-  ensureDir(path.dirname(resolvedOutPath));
-  const tempOutPath = `${resolvedOutPath}.tmp-${process.pid}-${Date.now()}`;
-
-  try {
-    fs.rmSync(tempOutPath, { force: true });
-  } catch {}
-
-  try {
-    fs.writeFileSync(tempOutPath, Buffer.from(base64, 'base64'));
-    ensureNonEmptyFile(tempOutPath, 'Saved image');
-    fs.renameSync(tempOutPath, resolvedOutPath);
-  } finally {
-    try {
-      fs.rmSync(tempOutPath, { force: true });
-    } catch {}
-  }
-
-  return true;
-});
-
 ipcMain.handle('check-raw-pipeline', async () => {
   return rawService.checkPipeline();
 });
@@ -1557,88 +1435,22 @@ ipcMain.handle('normalize-paths', async (_, inputPaths = []) => {
   return normalizeInputPaths(inputPaths);
 });
 
-ipcMain.handle('load-cleanup-presets', async () => {
-  try {
-    const presets = readCleanupPresets();
-    return {
-      ok: true,
-      presets,
-      filePath: getCleanupPresetsPath(),
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      presets: [],
-      error: error.message || String(error),
-      filePath: getCleanupPresetsPath(),
-    };
-  }
+registerPresetsIpc({
+  ipcMain,
+  app,
+  ensureDir,
 });
 
-ipcMain.handle('save-cleanup-preset', async (_, payload = {}) => {
-  try {
-    const normalized = normalizeCleanupPresetEntry(payload.preset);
-    if (!normalized) {
-      throw new Error('Preset name is required.');
-    }
-    if (isReservedCleanupPresetName(normalized.name)) {
-      throw new Error('That preset name is reserved for a built-in preset. Please choose a different name.');
-    }
-
-    const presets = readCleanupPresets();
-    const nameKey = normalized.name.toLowerCase();
-    const existingIndex = presets.findIndex((entry) => entry.name.toLowerCase() === nameKey);
-
-    if (existingIndex >= 0) {
-      presets[existingIndex] = normalized;
-    } else {
-      presets.push(normalized);
-    }
-
-    const saved = writeCleanupPresets(presets);
-    return {
-      ok: true,
-      presets: saved,
-      filePath: getCleanupPresetsPath(),
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      presets: [],
-      error: error.message || String(error),
-      filePath: getCleanupPresetsPath(),
-    };
-  }
-});
-
-ipcMain.handle('delete-cleanup-preset', async (_, payload = {}) => {
-  try {
-    const name = String(payload.name || '').trim();
-    if (!name) {
-      throw new Error('Preset name is required.');
-    }
-    if (isLockedBuiltinPresetName(name)) {
-      throw new Error('Built-in presets cannot be deleted.');
-    }
-
-    const presets = readCleanupPresets();
-    const nameKey = name.toLowerCase();
-    const nextPresets = presets.filter((entry) => entry.name.toLowerCase() !== nameKey);
-    const saved = writeCleanupPresets(nextPresets);
-
-    return {
-      ok: true,
-      presets: saved,
-      filePath: getCleanupPresetsPath(),
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      presets: [],
-      error: error.message || String(error),
-      filePath: getCleanupPresetsPath(),
-    };
-  }
+registerExportsIpc({
+  ipcMain,
+  dialog,
+  getMainWindow: () => mainWindow,
+  ensureDir,
+  ensureNonEmptyFile,
+  sanitizeName,
+  sanitizeSuffix,
+  makeBaseName,
+  buildMergedJpegName,
 });
 
 ipcMain.handle('hdr-import-folder', async (event, payload = {}) => {
@@ -1874,129 +1686,6 @@ ipcMain.handle('open-merged-tiffs-in-library', async (_, payload = {}) => {
   return {
     ok: true,
     items: normalized,
-  };
-});
-
-ipcMain.handle('export-edited-jpegs', async (_, payload = {}) => {
-  const items = Array.isArray(payload.items) ? payload.items : [];
-
-  if (!items.length) {
-    return {
-      ok: false,
-      error: 'No edited images were provided for export.',
-    };
-  }
-
-  let outputDir = payload.outputDir || null;
-
-  if (!outputDir) {
-    const pickResult = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory', 'createDirectory'],
-    });
-
-    if (pickResult.canceled || !pickResult.filePaths[0]) {
-      return { ok: false, cancelled: true };
-    }
-
-    outputDir = pickResult.filePaths[0];
-  }
-
-  const resolvedOutputDir = path.resolve(outputDir);
-  ensureDir(resolvedOutputDir);
-
-  const suffix = sanitizeSuffix(payload.suffix || '_edit');
-  const requestedQuality = Math.max(1, Math.min(100, Number(payload.quality) || 92));
-  const useHdrStrictNaming = Boolean(payload.useHdrStrictNaming);
-
-  const exported = [];
-  const failed = [];
-  const reservedNames = new Set();
-
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-
-    try {
-      if (!item || !item.dataUrl) {
-        throw new Error('Missing dataUrl for export item.');
-      }
-
-      const hdrNaming = item.hdrNaming || null;
-      const baseName = sanitizeName(
-        item.baseName
-          || item.exportBaseName
-          || (item.originalPath ? makeBaseName(item.originalPath) : null)
-          || `image_${String(i + 1).padStart(4, '0')}`
-      );
-
-      let fileName = `${baseName}${suffix}.jpg`;
-
-      if (useHdrStrictNaming && hdrNaming) {
-        fileName = buildMergedJpegName({
-          shootDate: hdrNaming.shootDate,
-          sourceFolder: hdrNaming.sourceFolder,
-          setIndex: hdrNaming.setIndex,
-          quality: requestedQuality,
-        });
-      }
-
-      let dedupeIndex = 1;
-
-      while (reservedNames.has(fileName) || fs.existsSync(path.join(resolvedOutputDir, fileName))) {
-        if (useHdrStrictNaming && hdrNaming) {
-          const strictName = buildMergedJpegName({
-            shootDate: hdrNaming.shootDate,
-            sourceFolder: hdrNaming.sourceFolder,
-            setIndex: hdrNaming.setIndex,
-            quality: requestedQuality,
-          });
-          const noExt = strictName.replace(/\.jpg$/i, '');
-          fileName = `${noExt}_${dedupeIndex}.jpg`;
-        } else {
-          fileName = `${baseName}${suffix}_${dedupeIndex}.jpg`;
-        }
-        dedupeIndex += 1;
-      }
-
-      reservedNames.add(fileName);
-
-      const outPath = path.join(resolvedOutputDir, fileName);
-      const base64 = String(item.dataUrl).replace(/^data:image\/\w+;base64,/, '');
-      const tempOutPath = path.join(
-        resolvedOutputDir,
-        `.tmp-export-${process.pid}-${Date.now()}-${Math.round(Math.random() * 10000)}-${fileName}`
-      );
-
-      try {
-        fs.rmSync(tempOutPath, { force: true });
-      } catch {}
-
-      try {
-        fs.writeFileSync(tempOutPath, Buffer.from(base64, 'base64'));
-        ensureNonEmptyFile(tempOutPath, 'Exported JPEG');
-        fs.renameSync(tempOutPath, outPath);
-      } finally {
-        try {
-          fs.rmSync(tempOutPath, { force: true });
-        } catch {}
-      }
-
-      exported.push({
-        source: item.originalPath || `item-${i + 1}`,
-        outPath,
-      });
-    } catch (error) {
-      failed.push({
-        source: item?.originalPath || `item-${i + 1}`,
-        error: error.message || String(error),
-      });
-    }
-  }
-
-  return {
-    ok: true,
-    outputDir: resolvedOutputDir,
-    exported,
-    failed,
   };
 });
 

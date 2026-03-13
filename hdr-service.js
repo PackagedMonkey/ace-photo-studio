@@ -39,11 +39,73 @@ class HdrService {
 
     for (const sourcePath of sourcePaths) {
       if (this.rawService.isRawFile(sourcePath)) {
-        const conversion = await this.rawService.convertRawToTiff(sourcePath);
+        let conversion = null;
+        try {
+          conversion = await this.rawService.convertRawToTiff(sourcePath, null, {
+            context: 'hdr-merge-source',
+          });
+        } catch (error) {
+          const lens = error?.lensCorrection || null;
+          if (lens && lens.requested) {
+            jobLogger(
+              `RAW_LENS_CORRECTION_JSON ${JSON.stringify({
+                sourcePath: path.resolve(sourcePath),
+                requested: lens.requested,
+                metadataDetected: lens.metadataDetected,
+                metadataMarkers: lens.metadataMarkers || [],
+                helperSupportsCorrection: lens.helperSupportsCorrection,
+                mode: lens.mode || null,
+                djiMavic3Detected: lens.djiMavic3Detected,
+                djiProfileId: lens.djiProfileId || null,
+                embeddedAttempted: lens.embeddedAttempted,
+                manualFallbackAttempted: lens.manualFallbackAttempted,
+                manualFallbackApplied: lens.manualFallbackApplied,
+                manualFallbackReason: lens.manualFallbackReason || null,
+                applied: lens.applied,
+                skipped: lens.skipped,
+                skipReason: lens.skipReason || null,
+                failed: true,
+                error: error.message || String(error),
+              })}`
+            );
+          }
+          throw error;
+        }
         tiffPaths.push(conversion.outputPath);
+        const lens = conversion.lensCorrection || null;
+        const lensSummary = lens
+          ? (
+            lens.requested
+              ? `, lens=${lens.applied ? `applied:${lens.mode || 'unknown'}` : `skipped:${lens.skipReason || 'unknown'}`}`
+              : (lens.mode === 'disabled'
+                ? `, lens=disabled:${lens.skipReason || 'unknown'}`
+                : ', lens=not-requested')
+          )
+          : '';
         jobLogger(
-          `RAW converted for merge: ${sourcePath} -> ${conversion.outputPath} (${conversion.backend}${conversion.cached ? ', cache' : ''})`
+          `RAW converted for merge: ${sourcePath} -> ${conversion.outputPath} (${conversion.backend}${conversion.cached ? ', cache' : ''}${lensSummary})`
         );
+        if (lens) {
+          jobLogger(
+            `RAW_LENS_CORRECTION_JSON ${JSON.stringify({
+              sourcePath: path.resolve(sourcePath),
+              requested: lens.requested,
+              metadataDetected: lens.metadataDetected,
+              metadataMarkers: lens.metadataMarkers || [],
+              helperSupportsCorrection: lens.helperSupportsCorrection,
+              mode: lens.mode || null,
+              djiMavic3Detected: lens.djiMavic3Detected,
+              djiProfileId: lens.djiProfileId || null,
+              embeddedAttempted: lens.embeddedAttempted,
+              manualFallbackAttempted: lens.manualFallbackAttempted,
+              manualFallbackApplied: lens.manualFallbackApplied,
+              manualFallbackReason: lens.manualFallbackReason || null,
+              applied: lens.applied,
+              skipped: lens.skipped,
+              skipReason: lens.skipReason || null,
+            })}`
+          );
+        }
         continue;
       }
 
