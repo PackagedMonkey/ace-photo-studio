@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ACE Photo Studio</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="startupScreen" class="startup-screen">
+    <div class="startup-bg-glow"></div>
+
+    <div class="startup-card">
+      <div class="startup-logo-wrap">
+        <img id="startupLogo" class="startup-logo" src="./assets/ace-logo.png" alt="ACE Photo Studio logo" />
+        <div class="startup-lens-glow"></div>
+      </div>
+
+      <h1>ACE Photo Studio</h1>
+      <p class="startup-tagline">Professional Photo Cleanup & HDR Batch Workflow</p>
+
+      <div class="startup-status-row">
+        <span class="startup-status-label" id="startupStatusLabel">Loading Modules</span>
+        <span class="startup-dots">
+          <span></span><span></span><span></span>
+        </span>
+      </div>
+
+      <div class="startup-loader">
+        <div class="startup-loader-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="appRoot" class="app-root hidden">
+    <div class="shell">
+      <div class="window">
+        <div class="mac-titlebar">
+          <div class="mac-titlebar-title-wrap">
+            <div class="mac-titlebar-title">ACE Photo Studio</div>
+            <div class="mac-titlebar-subtitle">Photo Cleanup + HDR</div>
+          </div>
+        </div>
+
+        <div class="topbar">
+          <div class="actions actions-main">
+            <button class="primary" id="addPhotosBtn">Add Photos</button>
+            <button id="addFolderBtn">Add Folder</button>
+            <button id="addHdrFolderBtn">Add HDR Folder</button>
+          </div>
+
+          <div class="brand-wrap">
+            <img id="brandLogo" class="brand-logo" src="./assets/ace-logo.png" alt="ACE Photo Studio logo" />
+            <div class="title-wrap">
+              <h1>ACE Photo Studio</h1>
+            </div>
+          </div>
+
+          <div class="actions actions-export">
+            <button id="saveCurrentBtn">Export Current JPG</button>
+            <button id="exportAllBtn">Export All JPG</button>
+            <button id="exportMergedHdrBtn">Batch HDR Export</button>
+            <label class="quality-inline" for="hdrExportQuality">
+              <span>Quality</span>
+              <input type="range" id="hdrExportQuality" min="60" max="100" value="92" />
+              <span id="hdrExportQualityValue">92</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="content">
+          <section class="panel left-panel">
+            <div class="panel-body left-panel-body">
+              <div class="left-stack-section left-stack-section-hdr" id="hdrWorkflowLeftSection">
+                <button
+                  class="left-stack-toggle"
+                  id="toggleHdrWorkflowSection"
+                  aria-expanded="true"
+                  aria-controls="hdrWorkflowContent"
+                >
+                  <span class="left-stack-chevron" aria-hidden="true"></span>
+                  <span class="left-stack-title-wrap">
+                    <span class="left-stack-title">Batch HDR Merge</span>
+                    <span class="left-stack-sub">Detect brackets and build 16-bit TIFF masters</span>
+                  </span>
+                </button>
+
+                <div class="left-stack-content" id="hdrWorkflowContent">
+                  <div class="controls-section hdr-workflow" id="hdrWorkflow">
+                    <div class="hdr-workflow-head">
+                      <div>
+                        <h3>Batch HDR Merge</h3>
+                        <p>Detect bracketed RAW sets and output 16-bit TIFF masters</p>
+                      </div>
+                    </div>
+
+                    <div class="hdr-action-row">
+                      <button class="primary hdr-primary-action" id="startHdrMergePanelBtn">Start HDR Merge</button>
+                      <button class="quiet" id="cancelHdrMergeBtn">Cancel</button>
+                    </div>
+
+                    <div class="hdr-action-row hdr-action-row-secondary">
+                      <button class="open-output" id="openHdrOutputFolderBtn">Open Output Folder</button>
+                      <button class="retry" id="retryFailedBtn">Retry Failed</button>
+                    </div>
+
+                    <div class="hdr-action-hint" id="hdrActionHint">
+                      1) Add HDR Folder, 2) review detected sets, 3) press Start HDR Merge.
+                    </div>
+
+                    <div class="hdr-select-grid">
+                      <label>
+                        Merge Mode
+                        <select id="hdrModeSelect">
+                          <option value="fusion" selected>Natural Fusion</option>
+                          <option value="hdr">HDR Merge</option>
+                        </select>
+                      </label>
+                      <label>
+                        Bracket Size
+                        <select id="hdrBracketSelect">
+                          <option value="auto" selected>Auto</option>
+                          <option value="3">3-shot</option>
+                          <option value="5">5-shot</option>
+                        </select>
+                      </label>
+                      <label>
+                        Concurrency
+                        <select id="hdrConcurrencySelect">
+                          <option value="1" selected>1 (Safest)</option>
+                          <option value="2">2</option>
+                          <option value="3">3</option>
+                          <option value="4">4</option>
+                        </select>
+                      </label>
+                    </div>
+
+                    <div class="hdr-status-shell">
+                      <div class="progress-wrap">
+                        <div class="progress-bar" id="hdrOverallProgressBar" style="width:0%;"></div>
+                      </div>
+
+                      <div class="hdr-progress-meta">
+                        <span id="hdrOverallProgressText">0 / 0 sets</span>
+                      </div>
+
+                      <div class="hdr-status-compact" id="hdrStatusCompact">
+                        No HDR folder selected yet.
+                      </div>
+
+                      <button
+                        class="hdr-details-toggle"
+                        id="toggleHdrDetailsBtn"
+                        aria-expanded="false"
+                        aria-controls="hdrDetailsContent"
+                      >
+                        <span class="hdr-details-chevron" aria-hidden="true"></span>
+                        <span>Show Details</span>
+                      </button>
+
+                      <div class="hdr-details-content is-collapsed" id="hdrDetailsContent">
+                        <div class="hdr-summary" id="hdrSummary">
+                          No HDR folder selected yet.
+                        </div>
+
+                        <div class="hdr-list-wrap">
+                          <div class="hdr-list-title">Merge Queue</div>
+                          <div class="hdr-set-list" id="hdrSetList">
+                            <div class="mini-note">Queue is idle.</div>
+                          </div>
+                        </div>
+
+                        <div class="hdr-list-wrap">
+                          <div class="hdr-list-title">Recent Errors</div>
+                          <div class="hdr-error-list" id="hdrErrorList">
+                            <div class="mini-note">No errors.</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                class="left-panel-resizer"
+                id="leftPanelResizer"
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="Resize Batch HDR and Library sections"
+                tabindex="0"
+              ></div>
+
+              <div class="left-stack-section left-stack-section-library" id="libraryLeftSection">
+                <button
+                  class="left-stack-toggle"
+                  id="toggleLibrarySection"
+                  aria-expanded="true"
+                  aria-controls="libraryContent"
+                >
+                  <span class="left-stack-chevron" aria-hidden="true"></span>
+                  <span class="left-stack-title-wrap">
+                    <span class="left-stack-title">Library</span>
+                    <span class="left-stack-sub"><span id="photoCount">0</span> loaded</span>
+                  </span>
+                </button>
+
+                <div class="left-stack-content" id="libraryContent">
+                  <div class="library-body">
+                    <div class="library-actions">
+                      <button id="clearLibraryBtn" class="quiet" type="button">Delete All</button>
+                    </div>
+                    <div class="photo-list" id="photoList"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel preview-panel">
+            <div class="panel-head preview-head">
+              <div class="preview-head-copy">
+                <h2>Preview</h2>
+                <p>Compare source and edited result</p>
+              </div>
+
+              <div class="toolbar">
+                <div class="toolbar-group">
+                  <button id="zoomOutBtn">−</button>
+                  <button id="zoomFitBtn">Fit</button>
+                  <button id="zoomInBtn">+</button>
+                </div>
+                <div class="toolbar-group">
+                  <button id="previewModeBtn">Slider View</button>
+                </div>
+                <div class="toolbar-group">
+                  <button id="rotateBtn">Rotate</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel-body preview-body" id="previewArea"></div>
+          </section>
+
+          <section class="panel controls-panel">
+            <div class="panel-head">
+              <h2>Adjustments</h2>
+              <p>Edit selected photos with quick presets and precise manual controls</p>
+            </div>
+
+            <div class="panel-body controls-body">
+              <div class="controls-section cleanup-section">
+                <div class="controls-section-head">
+                  <h3>Adjustment Controls</h3>
+                </div>
+
+                <div class="histogram-card" id="histogramCard">
+                  <div class="histogram-title">Luminance Histogram</div>
+                  <canvas
+                    id="histogramCanvas"
+                    class="histogram-canvas"
+                    width="256"
+                    height="74"
+                    role="img"
+                    aria-label="Luminance histogram of the current preview"
+                  ></canvas>
+                </div>
+
+                <div id="controls"></div>
+
+                <div class="toggle-row">
+                  <div class="toggle-copy">
+                    <div class="toggle-title">Apply edits to all photos</div>
+                    <div class="toggle-sub">Useful when the whole shoot has the same lighting</div>
+                  </div>
+                  <button class="toggle" id="applyAllToggle" aria-label="Apply edits to all photos"></button>
+                </div>
+
+                <div class="preset-row" id="tonalPresetRow">
+                  <button id="presetNaturalBtn">Natural</button>
+                  <button id="presetRealEstateBtn">Real Estate</button>
+                  <button id="presetPunchyBtn">Punchy</button>
+                  <button id="presetSoftBtn">Soft</button>
+                </div>
+
+                <div class="bottom-row">
+                  <button id="autoFixBtn">Auto Fix</button>
+                  <button id="resetBtn">Reset</button>
+                  <button id="copyToAllBtn">Copy to All</button>
+                </div>
+
+                <div class="preset-manager-row">
+                  <div class="preset-dropdown-wrap">
+                    <button id="presetDropdownBtn" type="button" aria-label="Pick preset" aria-expanded="false">
+                      <span class="preset-dropdown-label">PICK PRESET</span>
+                      <span class="preset-dropdown-caret" aria-hidden="true">▾</span>
+                    </button>
+                    <div id="presetDropdownMenu" class="preset-dropdown-menu hidden" role="menu" aria-label="Preset list"></div>
+                  </div>
+                  <button id="savePresetBtn" type="button">Save Preset</button>
+                </div>
+              </div>
+
+              <div class="note subtle-note">
+                RAW conversion and HDR merging run in Electron main process/child workers. The renderer only handles previews and edit controls.
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div class="drop-overlay" id="dropOverlay">
+      <div class="drop-overlay-card">
+        <div class="big">Drop to import</div>
+        <div class="small">Photos and folders from Finder are supported</div>
+      </div>
+    </div>
+
+    <div class="preset-modal-backdrop hidden" id="savePresetModal" aria-hidden="true">
+      <div class="preset-modal-card" role="dialog" aria-modal="true" aria-labelledby="savePresetModalTitle">
+        <h3 id="savePresetModalTitle">Save Preset</h3>
+        <label for="presetNameInput">Preset Name:</label>
+        <input id="presetNameInput" type="text" placeholder="Preset name" maxlength="64" />
+        <div class="preset-modal-actions">
+          <button id="cancelSavePresetBtn" type="button">Cancel</button>
+          <button id="confirmSavePresetBtn" class="primary" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./renderer.js"></script>
+</body>
+</html>

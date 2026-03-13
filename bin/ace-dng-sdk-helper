@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+HELPER_VERSION="0.1.0-libraw"
+
+print_usage() {
+  cat <<'USAGE'
+ace-dng-sdk-helper
+
+Usage:
+  ace-dng-sdk-helper --input <input.dng> --output <output.tif> [--format tiff16]
+  ace-dng-sdk-helper decode --input <input.dng> --output <output.tif> [--format tiff16]
+  ace-dng-sdk-helper <input.dng> <output.tif>
+  ace-dng-sdk-helper --version
+
+Notes:
+  - This helper uses LibRaw's dcraw_emu to decode RAW/DNG into a 16-bit TIFF.
+  - Supported format values: tiff16, tiff, tif
+USAGE
+}
+
+if [[ $# -eq 0 ]]; then
+  print_usage
+  exit 2
+fi
+
+if [[ "${1:-}" == "--version" ]]; then
+  echo "ace-dng-sdk-helper ${HELPER_VERSION}"
+  exit 0
+fi
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  print_usage
+  exit 0
+fi
+
+if [[ "${1:-}" == "decode" ]]; then
+  shift
+fi
+
+input_path=""
+output_path=""
+format="tiff16"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --input|-i)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for $1" >&2
+        exit 2
+      fi
+      input_path="$2"
+      shift 2
+      ;;
+    --output|-o)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for $1" >&2
+        exit 2
+      fi
+      output_path="$2"
+      shift 2
+      ;;
+    --format)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --format" >&2
+        exit 2
+      fi
+      format="$2"
+      shift 2
+      ;;
+    --version)
+      echo "ace-dng-sdk-helper ${HELPER_VERSION}"
+      exit 0
+      ;;
+    --help|-h)
+      print_usage
+      exit 0
+      ;;
+    *)
+      if [[ -z "$input_path" ]]; then
+        input_path="$1"
+      elif [[ -z "$output_path" ]]; then
+        output_path="$1"
+      else
+        echo "Unexpected argument: $1" >&2
+        exit 2
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$input_path" || -z "$output_path" ]]; then
+  echo "Both input and output paths are required." >&2
+  print_usage >&2
+  exit 2
+fi
+
+format_lc="$(printf '%s' "$format" | tr '[:upper:]' '[:lower:]')"
+case "$format_lc" in
+  tiff16|tiff|tif)
+    ;;
+  *)
+    echo "Unsupported format '${format}'. Only tiff16 is supported." >&2
+    exit 2
+    ;;
+esac
+
+if [[ ! -f "$input_path" ]]; then
+  echo "Input RAW file does not exist: $input_path" >&2
+  exit 2
+fi
+
+dng_tool="${ACE_LIBRAW_DCRAW:-}"
+if [[ -z "$dng_tool" ]]; then
+  script_dir="$(cd "$(dirname "$0")" && pwd)"
+  if [[ -x "$script_dir/dcraw_emu" ]]; then
+    dng_tool="$script_dir/dcraw_emu"
+  elif command -v dcraw_emu >/dev/null 2>&1; then
+    dng_tool="$(command -v dcraw_emu)"
+  elif [[ -x "/opt/homebrew/bin/dcraw_emu" ]]; then
+    dng_tool="/opt/homebrew/bin/dcraw_emu"
+  elif [[ -x "/usr/local/bin/dcraw_emu" ]]; then
+    dng_tool="/usr/local/bin/dcraw_emu"
+  else
+    echo "dcraw_emu is required but was not found. Install LibRaw (brew install libraw)." >&2
+    exit 3
+  fi
+fi
+
+mkdir -p "$(dirname "$output_path")"
+
+input_abs="$(cd "$(dirname "$input_path")" && pwd)/$(basename "$input_path")"
+output_abs="$(cd "$(dirname "$output_path")" && pwd)/$(basename "$output_path")"
+tmp_output="${output_abs}.tmp-$$-$(date +%s)"
+
+rm -f "$tmp_output"
+
+"$dng_tool" -T -6 -W -q 3 -w -o 1 -Z "$tmp_output" "$input_abs" >/dev/null 2>&1
+
+if [[ ! -f "$tmp_output" ]]; then
+  echo "dcraw_emu did not produce a TIFF output file for input: $input_abs" >&2
+  exit 4
+fi
+
+mv -f "$tmp_output" "$output_abs"
+
+echo "$output_abs"
