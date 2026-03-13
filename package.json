@@ -1,0 +1,64 @@
+{
+  "name": "ace-photo-studio",
+  "version": "1.0.0",
+  "description": "ACE Photo Studio Mac App",
+  "main": "main.js",
+  "author": "Tony LaRosa",
+  "license": "ISC",
+  "scripts": {
+    "start": "electron .",
+    "test:hdr-samples": "node tests/validate-hdr-samples.js",
+    "test:bracket-grouping": "node tests/validate-bracket-grouping.js",
+    "test:merge-isolation": "node tests/validate-merge-input-isolation.js",
+    "stage:helpers": "bash scripts/stage-macos-helpers.sh",
+    "verify:helpers": "node scripts/verify-helper-bundle.js",
+    "verify:helpers:packaged": "node scripts/verify-packaged-helpers.js",
+    "check:mac-signing": "node scripts/check-macos-signing-env.js",
+    "prepack": "npm run stage:helpers && npm run verify:helpers",
+    "postpack": "npm run verify:helpers:packaged",
+    "pack": "electron-builder --dir",
+    "predist": "npm run stage:helpers && npm run verify:helpers",
+    "postdist": "npm run verify:helpers:packaged",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^40.8.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.acephotostudio.app",
+    "productName": "ACE Photo Studio",
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist"
+    },
+    "files": [
+      "*.js",
+      "bin/**/*",
+      "assets/**/*",
+      "index.html",
+      "styles.css"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets"
+      },
+      {
+        "from": "helpers/macos",
+        "to": "helpers"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.photography",
+      "target": [
+        "dmg"
+      ],
+      "icon": "assets/ace_photo_studio.icns"
+    },
+    "dmg": {
+      "title": "ACE Photo Studio",
+      "icon": "assets/ace_photo_studio.icns"
+    }
+  }
+}
