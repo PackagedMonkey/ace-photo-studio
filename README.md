@@ -16,6 +16,22 @@ Current focus areas:
 
 This README is implementation-aligned with the current codebase (not aspirational behavior).
 
+## Install on macOS
+
+1. Choose the correct DMG for your Mac:
+   - Apple Silicon (M1/M2/M3): `arm64`
+   - Intel Mac: `x64`
+2. Open the DMG and drag **ACE Photo Studio** into **Applications**.
+3. Open **Applications** and launch **ACE Photo Studio**.
+
+### If macOS says the app cannot be verified
+
+1. Try opening the app once from **Applications**.
+2. Go to **System Settings > Privacy & Security**.
+3. Scroll to the security message for ACE Photo Studio and click **Open Anyway**.
+4. Confirm the follow-up prompt to open the app.
+5. Optional: right-click the app in **Applications** and choose **Open**.
+
 ## Current Feature Set
 
 - Photo library import (`Add Photos`, `Add Folder`, drag/drop)
