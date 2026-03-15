@@ -5,9 +5,9 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const { detectBracketGroups } = require('../bracket-detector');
-const { RawService } = require('../raw-service');
-const { HdrService } = require('../hdr-service');
+const { detectBracketGroups } = require('../src/shared/bracket-detector');
+const { RawService } = require('../src/main/raw-service');
+const { HdrService } = require('../src/main/hdr-service');
 
 const RAW_EXTENSIONS = new Set(['.dng', '.cr2', '.cr3', '.nef', '.arw', '.raf', '.orf', '.rw2', '.pef', '.srw']);
 

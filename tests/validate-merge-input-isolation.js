@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { HdrService } = require('../hdr-service');
+const { HdrService } = require('../src/main/hdr-service');
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });

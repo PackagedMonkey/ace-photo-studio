@@ -2,7 +2,7 @@
   "name": "ace-photo-studio",
   "version": "1.1.0",
   "description": "ACE Photo Studio Mac App",
-  "main": "main.js",
+  "main": "src/main/main.js",
   "author": "Tony LaRosa",
   "license": "ISC",
   "scripts": {
@@ -11,10 +11,10 @@
     "test:bracket-grouping": "node tests/validate-bracket-grouping.js",
     "test:merge-isolation": "node tests/validate-merge-input-isolation.js",
     "test:editor-regressions": "node tests/validate-editor-regressions.js",
-    "stage:helpers": "bash scripts/stage-macos-helpers.sh",
-    "verify:helpers": "node scripts/verify-helper-bundle.js",
-    "verify:helpers:packaged": "node scripts/verify-packaged-helpers.js",
-    "check:mac-signing": "node scripts/check-macos-signing-env.js",
+    "stage:helpers": "bash build/scripts/stage-macos-helpers.sh",
+    "verify:helpers": "node build/scripts/verify-helper-bundle.js",
+    "verify:helpers:packaged": "node build/scripts/verify-packaged-helpers.js",
+    "check:mac-signing": "node build/scripts/check-macos-signing-env.js",
     "prepack": "npm run stage:helpers && npm run verify:helpers",
     "postpack": "npm run verify:helpers:packaged",
     "pack": "electron-builder --dir",
@@ -37,11 +37,9 @@
       "output": "dist"
     },
     "files": [
-      "*.js",
-      "bin/**/*",
-      "assets/**/*",
-      "index.html",
-      "styles.css"
+      "src/**/*",
+      "build/bin/**/*",
+      "assets/**/*"
     ],
     "extraResources": [
       {
@@ -49,7 +47,7 @@
         "to": "assets"
       },
       {
-        "from": "helpers/macos",
+        "from": "build/helpers/macos",
         "to": "helpers"
       }
     ],

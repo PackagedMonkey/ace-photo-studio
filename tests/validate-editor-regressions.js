@@ -4,9 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 
-const editorCore = require('../editor-regression-core');
-const rendererStateFactory = require('../renderer-state');
-const { normalizeCleanupPresetEntry } = require('../cleanup-preset-schema');
+const editorCore = require('../src/shared/editor-regression-core');
+const rendererStateFactory = require('../src/renderer/renderer-state');
+const { normalizeCleanupPresetEntry } = require('../src/shared/cleanup-preset-schema');
 
 function assertApprox(actual, expected, tolerance, message) {
   if (Math.abs(actual - expected) > tolerance) {
@@ -257,8 +257,8 @@ function runRendererStateDomainCheck() {
 }
 
 function runRendererWiringCheck() {
-  const rendererPath = path.join(__dirname, '..', 'renderer.js');
-  const indexPath = path.join(__dirname, '..', 'index.html');
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer', 'renderer.js');
+  const indexPath = path.join(__dirname, '..', 'src', 'renderer', 'index.html');
   const rendererSource = fs.readFileSync(rendererPath, 'utf8');
   const indexSource = fs.readFileSync(indexPath, 'utf8');
 
@@ -304,7 +304,7 @@ function runRendererWiringCheck() {
   );
 
   assert(
-    indexSource.includes('<script src="./editor-regression-core.js"></script>'),
+    indexSource.includes('<script src="../shared/editor-regression-core.js"></script>'),
     'index.html must load editor-regression-core.js before renderer.js'
   );
 }

@@ -3,8 +3,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const { detectBracketGroups } = require('../bracket-detector');
-const { RawService } = require('../raw-service');
+const { detectBracketGroups } = require('../src/shared/bracket-detector');
+const { RawService } = require('../src/main/raw-service');
 
 const TEST_FOLDER = path.resolve(__dirname, 'hdr-samples', 'hdr-set-3');
 const EXPOSURE_CYCLE = [-2, -1, 0, 1, 2];
